@@ -116,12 +116,21 @@ struct HolderPresentation {
     /// different flow and not this function's business. A picker is still the
     /// right answer for two self-issued documents; that is a smaller and much
     /// later problem than the one this fixes.
-    func storedCredentialID(for source: PresentationCredentialSource = .selfIssued) throws -> String? {
+    func storedCredentialID(
+        for source: PresentationCredentialSource = .selfIssued,
+        matchingCredentialTypes: Set<String>? = nil
+    ) throws -> String? {
         for id in try store.allIDs() {
             guard let serialized = try store.load(id: id) else { continue }
             let storedSource = StoredCardSource.source(of: serialized)
-            if (source == .selfIssued && storedSource == .selfIssued)
-                || (source == .twdiw && storedSource == .twdiw) { return id }
+            if source == .selfIssued && storedSource == .selfIssued { return id }
+            if source == .twdiw && storedSource == .twdiw {
+                if let matchingCredentialTypes {
+                    guard let credential = try? TWDIWCredentialReader.read(serialized),
+                          matchingCredentialTypes.contains(credential.credentialType) else { continue }
+                }
+                return id
+            }
         }
         return nil
     }
@@ -231,10 +240,14 @@ struct HolderPresentation {
     /// exposed as one indivisible value for the field-proof pipeline. Resolving
     /// by the public key inside the credential avoids a second identifier-to-key
     /// table that could drift.
-    func predicateCredentialMaterial(for source: PresentationCredentialSource)
+    func predicateCredentialMaterial(
+        for source: PresentationCredentialSource,
+        matchingCredentialTypes: Set<String>? = nil
+    )
         throws -> PredicateCredentialMaterial {
         guard let credentialID = try (source == .selfIssued
-            ? StoredNationalID.credentialID : storedCredentialID(for: source)),
+            ? StoredNationalID.credentialID
+            : storedCredentialID(for: source, matchingCredentialTypes: matchingCredentialTypes)),
               let serialized = try store.load(id: credentialID) else {
             throw HolderPresentationError.noCredentialStored
         }

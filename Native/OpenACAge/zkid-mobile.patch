@@ -339,13 +339,14 @@ diff --git a/wallet-unit-poc/mobile/src/lib.rs b/wallet-unit-poc/mobile/src/lib.
 index 7dcc0b2..6a8bf2c 100644
 --- a/wallet-unit-poc/mobile/src/lib.rs
 +++ b/wallet-unit-poc/mobile/src/lib.rs
-@@ -16,6 +16,11 @@ use ecdsa_spartan2::{
+@@ -16,6 +16,12 @@ use ecdsa_spartan2::{
  };
  use std::path::PathBuf;
  
 +mod predicate;
 +pub use predicate::{
-+    create_age_prepare_input, create_age_show_input, verify_age_presentation, AgePrepareInput,
++    create_age_prepare_input, create_age_show_input, create_name_prepare_input,
++    create_name_show_input, verify_age_presentation, verify_name_presentation, AgePrepareInput,
 +};
 +
  // Initializes the shared UniFFI scaffolding and defines the `MoproError` enum.

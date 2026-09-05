@@ -51,6 +51,10 @@ struct VerificationRunRecordTests {
             // matrix can put it beside the website's SD-JWT-VC run.
             (.privateAgeProof, .governmentWallet, .https, .w1),
             (.privateAgeProof, .selfIssued, .https, .w2),
+            (.disclosedNamePresentation, .governmentWallet, .bluetooth, .n1),
+            (.disclosedNamePresentation, .selfIssued, .bluetooth, .n2),
+            (.privateNameProof, .governmentWallet, .bluetooth, .n3),
+            (.privateNameProof, .selfIssued, .bluetooth, .n4),
         ]
         for (flow, kind, transport, expected) in cases {
             let record = VerificationRunRecord(flow: flow, role: .verifier,

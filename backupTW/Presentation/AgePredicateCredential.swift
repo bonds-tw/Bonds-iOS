@@ -62,6 +62,50 @@ struct AgePredicateCredentialProvider {
                                                     source: source, storedCredential: stored.serialized))
         }
     }
+
+    func material(for request: AgePredicateProofRequest,
+                  now: Date = Date()) throws -> AgePredicateCredentialMaterial {
+        let source = request.credentialSource
+        let stored = try holder.predicateCredentialMaterial(
+            for: source,
+            matchingCredentialTypes: request.checksName
+                ? ConvenienceStorePickupCatalog.telecomCredentialTypes : nil)
+        switch source {
+        case .twdiw:
+            let credential = try TWDIWCredentialReader.read(stored.serialized, now: now)
+            guard !request.checksName
+                    || ConvenienceStorePickupCatalog.telecomCredentialTypes.contains(credential.credentialType) else {
+                throw AgePredicateProofError.sourceMismatch
+            }
+            guard trustLookup.find(credential.issuerDID) != nil else {
+                throw AgePredicateProofError.credentialIsNotTrusted
+            }
+            let issuer = try JWKDIDKey.p256PublicKey(fromDID: credential.issuerDID)
+            return AgePredicateCredentialMaterial(
+                sdJWT: stored.serialized,
+                issuerDID: credential.issuerDID,
+                issuerPublicKeyX963: issuer.x963Representation,
+                holderKey: stored.key,
+                cacheKey: AgePredicatePrepareCache.key(
+                    source: source, storedCredential: stored.serialized))
+        case .selfIssued:
+            let derivative: SelfIssuedMyDataAgeCredential.Issued
+            if request.checksName {
+                derivative = try SelfIssuedMyDataNameCredential.issue(
+                    stored: stored.serialized, signedBy: stored.key, now: now)
+            } else {
+                derivative = try SelfIssuedMyDataAgeCredential.issue(
+                    stored: stored.serialized, signedBy: stored.key, now: now)
+            }
+            return AgePredicateCredentialMaterial(
+                sdJWT: derivative.sdJWT,
+                issuerDID: derivative.issuerDID,
+                issuerPublicKeyX963: stored.key.publicKeyX963,
+                holderKey: stored.key,
+                cacheKey: AgePredicatePrepareCache.key(
+                    source: source, storedCredential: stored.serialized))
+        }
+    }
 }
 
 enum SelfIssuedMyDataAgeCredential {
@@ -73,6 +117,22 @@ enum SelfIssuedMyDataAgeCredential {
     static func issue(stored: String,
                       signedBy key: DeviceKey,
                       now: Date) throws -> Issued {
+        try issue(stored: stored, signedBy: key, now: now,
+                  sourceClaimName: "birthdate",
+                  credentialType: "SelfIssuedMyDataAgeCredential",
+                  missingError: .noBirthDate,
+                  normalize: { normalizedBirthDate($0) })
+    }
+
+    fileprivate static func issue(
+        stored: String,
+        signedBy key: DeviceKey,
+        now: Date,
+        sourceClaimName: String,
+        credentialType: String,
+        missingError: AgePredicateProofError,
+        normalize: (String) -> String?
+    ) throws -> Issued {
         let envelope = try MOICASignedCredential.parse(stored)
         let credential = try envelope.credential()
         guard credential.type.contains("NationalIDCredential") else {
@@ -94,14 +154,13 @@ enum SelfIssuedMyDataAgeCredential {
         // cards keep disclosures outside the signed payload. Both are local
         // MyData derivatives and both can safely become a *self-asserted* age
         // credential, so the migration path accepts either exact source.
-        let rawBirth = opened.first(where: { $0.name == "birthdate" })?.value
-            ?? credential.credentialSubject["birthdate"]
-        guard let rawBirth,
-              let birth = normalizedBirthDate(rawBirth) else {
-            throw AgePredicateProofError.noBirthDate
+        let rawValue = opened.first(where: { $0.name == sourceClaimName })?.value
+            ?? credential.credentialSubject[sourceClaimName]
+        guard let rawValue, let value = normalize(rawValue) else {
+            throw missingError
         }
 
-        let disclosure = Disclosure(claimName: "birthdate", claimValue: birth)
+        let disclosure = Disclosure(claimName: sourceClaimName, claimValue: value)
         let issuerDID = try JWKDIDKey.did(fromP256PublicKeyX963: key.publicKeyX963)
         let coordinates = key.publicKeyX963.dropFirst()
         guard coordinates.count == 64 else { throw AgePredicateProofError.malformedPackage }
@@ -122,7 +181,7 @@ enum SelfIssuedMyDataAgeCredential {
             "cnf": ["jwk": ["kty": "EC", "crv": "P-256", "x": x, "y": y]],
             "vc": [
                 "@context": ["https://www.w3.org/2018/credentials/v1"],
-                "type": ["VerifiableCredential", "SelfIssuedMyDataAgeCredential"],
+                "type": ["VerifiableCredential", credentialType],
                 "credentialSubject": [
                     "id": issuerDID,
                     "_sd_alg": "sha-256",
@@ -172,5 +231,28 @@ enum SelfIssuedMyDataAgeCredential {
         let data = try JSONSerialization.data(withJSONObject: object,
                                               options: [.sortedKeys, .withoutEscapingSlashes])
         return data.base64URLEncodedString()
+    }
+}
+
+enum SelfIssuedMyDataNameCredential {
+    static func issue(stored: String,
+                      signedBy key: DeviceKey,
+                      now: Date) throws -> SelfIssuedMyDataAgeCredential.Issued {
+        try SelfIssuedMyDataAgeCredential.issue(
+            stored: stored,
+            signedBy: key,
+            now: now,
+            sourceClaimName: "name",
+            credentialType: "SelfIssuedMyDataNameCredential",
+            missingError: .noFullName,
+            normalize: { raw in
+                let normalized = raw.precomposedStringWithCanonicalMapping
+                guard normalized.utf8.elementsEqual(raw.utf8),
+                      (1...31).contains(normalized.utf8.count),
+                      !normalized.unicodeScalars.contains(where: {
+                          CharacterSet.controlCharacters.contains($0)
+                      }) else { return nil }
+                return normalized
+            })
     }
 }

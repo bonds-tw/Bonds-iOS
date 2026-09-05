@@ -44,8 +44,8 @@ class UseViewController: UICollectionViewController {
         // and routes by what the QR actually is (design system §10.2).
         static let present = NSLocalizedString("Show my document", comment: "")
         static let verify = NSLocalizedString("Check someone else's document", comment: "")
-        static let createAgeProof = NSLocalizedString("Answer an age check", comment: "age proof")
-        static let verifyAgeProof = NSLocalizedString("Check age with ZKP or SD-JWT-VC", comment: "age proof")
+        static let createAgeProof = NSLocalizedString("Answer a name check", comment: "name proof")
+        static let verifyAgeProof = NSLocalizedString("Check name with ZKP or SD-JWT-VC", comment: "name proof")
         static let prepareOffline = NSLocalizedString("Prepare offline checking", comment: "offline preparation")
     }
 
@@ -85,14 +85,14 @@ class UseViewController: UICollectionViewController {
                  secondaryText: NSLocalizedString("Save issuer trust and proof files before disconnecting. No cards are needed on the checking device.", comment: "offline preparation")),
             Item(image: UIImage(systemName: "person.text.rectangle.fill"),
                  title: Row.createAgeProof,
-                 secondaryText: NSLocalizedString(
-                    "The request determines whether to disclose a birth date or create a private proof. You confirm before anything is sent.",
-                    comment: "age proof")),
+                secondaryText: NSLocalizedString(
+                    "The request determines whether to disclose the signed name or create a private equality proof. You confirm before anything is sent.",
+                    comment: "name proof")),
             Item(image: UIImage(systemName: "checkmark.seal.text.page.fill"),
                  title: Row.verifyAgeProof,
-                 secondaryText: NSLocalizedString(
-                    "Compare local age checks using a government card or MyData national ID.",
-                    comment: "age proof"))
+                secondaryText: NSLocalizedString(
+                    "Compare local name checks using a phone-number card or MyData digital ID.",
+                    comment: "name proof"))
         ])
     }
 

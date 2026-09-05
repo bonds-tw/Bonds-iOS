@@ -48,16 +48,33 @@ enum AgePredicateProofHolderFlow {
     private static func showConsent(for request: AgePredicateProofRequest,
                                     on navigationController: UINavigationController?) {
         guard let navigationController else { return }
-        let source = request.credentialSource == .twdiw
-            ? NSLocalizedString("government wallet card", comment: "age proof")
-            : NSLocalizedString("self-issued MyData document", comment: "age proof")
-        var message = String(
-            format: NSLocalizedString(
-                "The checker asks whether you are at least %d.\n\nPurpose: %@\nSource: %@\n\nYour birth date and card never leave this phone.",
-                comment: "age proof consent"),
-            request.minimumAge, request.purpose, source)
-        if request.disclosesBirthdate {
-            message = String(format: NSLocalizedString("The checker asks whether you are at least %d.\n\nThis SD-JWT-VC comparison sends your birth date, issuer-signed card metadata and a holder-binding signature over Bluetooth. Stable card identifiers may be visible. This is not a zero-knowledge proof.\n\nPurpose: %@\nSource: %@", comment: "offline comparison consent"), request.minimumAge, request.purpose, source)
+        let source: String
+        var message: String
+        if request.checksName {
+            source = request.credentialSource == .twdiw
+                ? NSLocalizedString("phone-number verification card", comment: "name proof")
+                : NSLocalizedString("self-issued MyData digital ID", comment: "name proof")
+            let target = request.targetName ?? ""
+            message = String(
+                format: NSLocalizedString(
+                    "The checker asks whether your signed full name is exactly %@.\n\nPurpose: %@\nSource: %@\n\nThe zero-knowledge proof returns only yes or no. Your name and card remain on this phone.",
+                    comment: "name proof consent"),
+                target, request.purpose, source)
+            if request.disclosesName {
+                message = String(format: NSLocalizedString("The checker asks whether your signed full name is exactly %@.\n\nThis SD-JWT-VC comparison sends your name, issuer-signed card metadata and a holder-binding signature over Bluetooth. Stable card identifiers may be visible. This is not a zero-knowledge proof.\n\nPurpose: %@\nSource: %@", comment: "offline comparison consent"), target, request.purpose, source)
+            }
+        } else {
+            source = request.credentialSource == .twdiw
+                ? NSLocalizedString("government wallet card", comment: "age proof")
+                : NSLocalizedString("self-issued MyData document", comment: "age proof")
+            message = String(
+                format: NSLocalizedString(
+                    "The checker asks whether you are at least %d.\n\nPurpose: %@\nSource: %@\n\nYour birth date and card never leave this phone.",
+                    comment: "age proof consent"),
+                request.minimumAge, request.purpose, source)
+            if request.disclosesBirthdate {
+                message = String(format: NSLocalizedString("The checker asks whether you are at least %d.\n\nThis SD-JWT-VC comparison sends your birth date, issuer-signed card metadata and a holder-binding signature over Bluetooth. Stable card identifiers may be visible. This is not a zero-knowledge proof.\n\nPurpose: %@\nSource: %@", comment: "offline comparison consent"), request.minimumAge, request.purpose, source)
+            }
         }
         if let host = request.responseURL?.host {
             // The one difference from the two-device flow, said before consent:
@@ -66,18 +83,31 @@ enum AgePredicateProofHolderFlow {
                 format: NSLocalizedString("The finished proof will be sent to %@.", comment: "age proof consent"),
                 host)
         }
-        let alert = UIAlertController(
-            title: request.disclosesBirthdate
+        let title: String
+        let actionTitle: String
+        if request.checksName {
+            title = request.disclosesName
+                ? NSLocalizedString("Disclose name for comparison?", comment: "offline comparison")
+                : NSLocalizedString("Create a private name proof?", comment: "name proof")
+            actionTitle = request.disclosesName
+                ? NSLocalizedString("Disclose name", comment: "offline comparison")
+                : NSLocalizedString("Create proof", comment: "name proof")
+        } else {
+            title = request.disclosesBirthdate
                 ? NSLocalizedString("Disclose birth date for comparison?", comment: "offline comparison")
-                : NSLocalizedString("Create a private age proof?", comment: "age proof"),
+                : NSLocalizedString("Create a private age proof?", comment: "age proof")
+            actionTitle = request.disclosesBirthdate
+                ? NSLocalizedString("Disclose birth date", comment: "offline comparison")
+                : NSLocalizedString("Create proof", comment: "age proof")
+        }
+        let alert = UIAlertController(
+            title: title,
             message: message,
             preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel) { _ in
             navigationController.popViewController(animated: true)
         })
-        alert.addAction(UIAlertAction(title: request.disclosesBirthdate
-                                      ? NSLocalizedString("Disclose birth date", comment: "offline comparison")
-                                      : NSLocalizedString("Create proof", comment: "age proof"),
+        alert.addAction(UIAlertAction(title: actionTitle,
                                       style: .default) { _ in
             var stack = navigationController.viewControllers
             if stack.last is QRScanningViewController { stack.removeLast() }
@@ -118,8 +148,10 @@ final class AgePredicateProofSendViewController: UIViewController {
         self.engine = engine
         self.webClient = webClient
         super.init(nibName: nil, bundle: nil)
-        title = request.disclosesBirthdate ? "SD-JWT-VC"
-            : NSLocalizedString("Private age proof", comment: "age proof")
+        title = request.usesSDJWT ? "SD-JWT-VC"
+            : request.checksName
+                ? NSLocalizedString("Private name proof", comment: "name proof")
+                : NSLocalizedString("Private age proof", comment: "age proof")
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -144,18 +176,26 @@ final class AgePredicateProofSendViewController: UIViewController {
         titleLabel.adjustsFontForContentSizeCategory = true
         titleLabel.textAlignment = .center
         titleLabel.numberOfLines = 0
-        titleLabel.text = request.disclosesBirthdate ? "SD-JWT-VC"
+        titleLabel.text = request.usesSDJWT ? "SD-JWT-VC"
             : NSLocalizedString("Creating the proof on this phone…", comment: "age proof")
         detailLabel.font = .preferredFont(forTextStyle: .body)
         detailLabel.adjustsFontForContentSizeCategory = true
         detailLabel.textColor = .secondaryLabel
         detailLabel.textAlignment = .center
         detailLabel.numberOfLines = 0
-        detailLabel.text = request.disclosesBirthdate
-            ? NSLocalizedString("Disclose birth date", comment: "offline comparison")
-            : NSLocalizedString(
-            "Only the yes/no statement is returned. The hidden birth date, card and proving files stay here.",
-            comment: "age proof")
+        if request.disclosesName {
+            detailLabel.text = NSLocalizedString("Disclose signed name", comment: "offline comparison")
+        } else if request.disclosesBirthdate {
+            detailLabel.text = NSLocalizedString("Disclose birth date", comment: "offline comparison")
+        } else if request.checksName {
+            detailLabel.text = NSLocalizedString(
+                "Only the yes/no statement is returned. The hidden name, card and proving files stay here.",
+                comment: "name proof")
+        } else {
+            detailLabel.text = NSLocalizedString(
+                "Only the yes/no statement is returned. The hidden birth date, card and proving files stay here.",
+                comment: "age proof")
+        }
         var configuration = UIButton.Configuration.filled()
         configuration.title = NSLocalizedString("Done", comment: "")
         configuration.cornerStyle = .large
@@ -183,8 +223,8 @@ final class AgePredicateProofSendViewController: UIViewController {
             do {
                 let store = try CredentialStore()
                 let material = try AgePredicateCredentialProvider(
-                    holder: HolderPresentation(store: store)).material(for: request.credentialSource)
-                if request.disclosesBirthdate {
+                    holder: HolderPresentation(store: store)).material(for: request)
+                if request.usesSDJWT {
                     let payload = try SDJWTAgePresentation.create(material: material, request: request)
                     disclosurePreparationMilliseconds = VerificationClock.milliseconds(
                         from: createStartedAt ?? VerificationClock.now(), to: VerificationClock.now())
@@ -306,9 +346,15 @@ final class AgePredicateProofSendViewController: UIViewController {
             link?.stop()
             link = nil
             titleLabel.text = NSLocalizedString("The checker received the proof", comment: "age proof")
-            detailLabel.text = request.disclosesBirthdate
-                ? NSLocalizedString("Birth date and signed card metadata were sent. Check the verdict on the iPad.", comment: "offline comparison")
-                : NSLocalizedString("No birth date or card data was sent.", comment: "age proof")
+            if request.disclosesName {
+                detailLabel.text = NSLocalizedString("Name and signed card metadata were sent. Check the verdict on the iPad.", comment: "offline comparison")
+            } else if request.disclosesBirthdate {
+                detailLabel.text = NSLocalizedString("Birth date and signed card metadata were sent. Check the verdict on the iPad.", comment: "offline comparison")
+            } else if request.checksName {
+                detailLabel.text = NSLocalizedString("No name or card data was sent.", comment: "name proof")
+            } else {
+                detailLabel.text = NSLocalizedString("No birth date or card data was sent.", comment: "age proof")
+            }
             doneButton.isHidden = false
             recordRun(succeeded: true)
         case .unavailable(let reason), .failed(let reason):
@@ -338,8 +384,18 @@ final class AgePredicateProofSendViewController: UIViewController {
         } else {
             transport = transportStarted == nil ? .local : .bluetooth
         }
+        let flow: VerificationRunRecord.Flow
+        if request.disclosesName {
+            flow = .disclosedNamePresentation
+        } else if request.disclosesBirthdate {
+            flow = .disclosedAgePresentation
+        } else if request.checksName {
+            flow = .privateNameProof
+        } else {
+            flow = .privateAgeProof
+        }
         let record = VerificationRunRecord(
-            flow: request.disclosesBirthdate ? .disclosedAgePresentation : .privateAgeProof,
+            flow: flow,
             role: .holder,
             credentialKind: request.credentialSource == .twdiw
                 ? .governmentWallet : .selfIssued,
@@ -384,8 +440,8 @@ final class AgePredicateProofVerifierViewController: UIViewController {
 
     private let formatControl = UISegmentedControl(items: ["ZKP", "SD-JWT-VC"])
     private let sourceControl = UISegmentedControl(items: [
-        NSLocalizedString("Government card", comment: "age proof"),
-        NSLocalizedString("MyData self-asserted", comment: "age proof"),
+        NSLocalizedString("Phone-number card", comment: "name proof"),
+        NSLocalizedString("MyData digital ID", comment: "name proof"),
     ])
     private let codeContainer = UIView()
     private let codeImageView = UIImageView()
@@ -400,7 +456,7 @@ final class AgePredicateProofVerifierViewController: UIViewController {
         self.engine = engine
         self.trustLookup = trustLookup
         super.init(nibName: nil, bundle: nil)
-        title = NSLocalizedString("Check age with ZKP or SD-JWT-VC", comment: "age proof")
+        title = NSLocalizedString("Check name with ZKP or SD-JWT-VC", comment: "name proof")
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -442,7 +498,7 @@ final class AgePredicateProofVerifierViewController: UIViewController {
         codeImageView.layer.magnificationFilter = .nearest
         codeImageView.layer.minificationFilter = .nearest
         codeImageView.isAccessibilityElement = true
-        codeImageView.accessibilityLabel = NSLocalizedString("Age checking request code", comment: "age proof")
+        codeImageView.accessibilityLabel = NSLocalizedString("Name checking request code", comment: "name proof")
         statusLabel.font = .preferredFont(forTextStyle: .title3)
         statusLabel.adjustsFontForContentSizeCategory = true
         statusLabel.textAlignment = .center
@@ -500,23 +556,25 @@ final class AgePredicateProofVerifierViewController: UIViewController {
         detailLabel.text = nil
         let source: PresentationCredentialSource = sourceControl.selectedSegmentIndex == 0
             ? .twdiw : .selfIssued
-        let discloseBirthdate = formatControl.selectedSegmentIndex == 1
+        let discloseName = formatControl.selectedSegmentIndex == 1
         preparationTask = Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                if !discloseBirthdate {
-                try await engine.prepareVerificationAssets { [weak self] fraction in
-                    Task { @MainActor in
-                        self?.detailLabel.text = String(
-                            format: NSLocalizedString("Preparing checking files… %d%%", comment: "age proof"),
-                            Int((fraction * 100).rounded()))
+                if !discloseName {
+                    try await engine.prepareVerificationAssets { [weak self] fraction in
+                        Task { @MainActor in
+                            self?.detailLabel.text = String(
+                                format: NSLocalizedString("Preparing checking files… %d%%", comment: "age proof"),
+                                Int((fraction * 100).rounded()))
+                        }
                     }
-                }
                 }
                 try Task.checkCancellation()
                 let request = try AgePredicateProofRequest(
-                    purpose: NSLocalizedString("Age eligibility check", comment: "age proof"),
-                    credentialSource: source, discloseBirthdate: discloseBirthdate)
+                    purpose: NSLocalizedString("Confirm the signed full name", comment: "name proof"),
+                    credentialSource: source,
+                    targetName: "黃彥霖",
+                    discloseName: discloseName)
                 self.request = request
                 self.view.layoutIfNeeded()
                 guard let width = AgePredicateRequestQRLayout.pointWidth(forViewWidth: self.view.bounds.width) else {
@@ -593,7 +651,7 @@ final class AgePredicateProofVerifierViewController: UIViewController {
         renderedRequestWidth = nil
         let attempt = generation
         let verificationStarted = payloadReceivedAt ?? VerificationClock.now()
-        if request.disclosesBirthdate {
+        if request.usesSDJWT {
             verifyDisclosure(data, request: request, started: verificationStarted)
             return
         }
@@ -615,16 +673,16 @@ final class AgePredicateProofVerifierViewController: UIViewController {
                     }
                     expectedKey = key.x963Representation
                     evidence = NSLocalizedString(
-                        "Government issuer matched the saved API + Arbitrum trust evidence.",
-                        comment: "age proof")
+                        "Phone-number card issuer matched the saved API + Arbitrum trust evidence.",
+                        comment: "name proof")
                 case .selfIssued:
                     guard let key = try? JWKDIDKey.p256PublicKey(fromDID: package.issuerDID) else {
                         throw AgePredicateProofError.proofRejected
                     }
                     expectedKey = key.x963Representation
                     evidence = NSLocalizedString(
-                        "Source: self-asserted MyData derivative; this is not a government attestation.",
-                        comment: "age proof")
+                        "Source: self-asserted MyData digital-ID derivative; this is not a government attestation.",
+                        comment: "name proof")
                 }
                 let timing = try await engine.verify(
                     package: package, request: request,
@@ -639,8 +697,9 @@ final class AgePredicateProofVerifierViewController: UIViewController {
                 try Task.checkCancellation()
                 guard generation == attempt else { return }
                 try request.validateFreshness()
-                statusLabel.text = String(format: NSLocalizedString("Verified: at least %d", comment: "age proof"),
-                                          request.minimumAge)
+                statusLabel.text = String(
+                    format: NSLocalizedString("Verified: name is %@", comment: "name proof"),
+                    request.targetName ?? "")
                 detailLabel.text = evidence + "\n" + String(
                     format: NSLocalizedString("Proof creation %@ + %@ ms · verification %@ ms", comment: "age proof"),
                     Self.number(timing.prepareMilliseconds),
@@ -649,7 +708,7 @@ final class AgePredicateProofVerifierViewController: UIViewController {
                 let completed = VerificationClock.now()
                 let shown = requestShownAt ?? verificationStarted
                 let record = VerificationRunRecord(
-                    flow: .privateAgeProof,
+                    flow: .privateNameProof,
                     role: .verifier,
                     credentialKind: request.credentialSource == .twdiw
                         ? .governmentWallet : .selfIssued,
@@ -679,7 +738,7 @@ final class AgePredicateProofVerifierViewController: UIViewController {
                 let completed = VerificationClock.now()
                 let shown = requestShownAt ?? verificationStarted
                 let record = VerificationRunRecord(
-                    flow: .privateAgeProof,
+                    flow: .privateNameProof,
                     role: .verifier,
                     credentialKind: request.credentialSource == .twdiw
                         ? .governmentWallet : .selfIssued,
@@ -704,16 +763,16 @@ final class AgePredicateProofVerifierViewController: UIViewController {
         do {
             accepted = try SDJWTAgePresentation.verify(data, request: request, trust: trustLookup)
             statusLabel.text = accepted
-                ? String(format: NSLocalizedString("Verified: at least %d", comment: "age proof"), request.minimumAge)
-                : NSLocalizedString("The disclosed birth date does not meet this age threshold.", comment: "offline comparison")
-            detailLabel.text = NSLocalizedString("Checked locally using SD-JWT-VC and holder binding. The birth date was disclosed. Current revocation is unknown; self-issued MyData is not government attestation.", comment: "offline comparison")
+                ? String(format: NSLocalizedString("Verified: name is %@", comment: "name proof"), request.targetName ?? "")
+                : NSLocalizedString("The disclosed name does not equal the requested name.", comment: "offline comparison")
+            detailLabel.text = NSLocalizedString("Checked locally using SD-JWT-VC and holder binding. The name was disclosed. Current revocation is unknown; self-issued MyData is not government attestation.", comment: "offline comparison")
         } catch {
             statusLabel.text = NSLocalizedString("Presentation rejected", comment: "offline comparison")
             detailLabel.text = NSLocalizedString("The card, holder binding, request, or saved issuer trust could not be verified. Create a new request after checking offline preparation.", comment: "offline comparison")
         }
         let completed = VerificationClock.now()
         let record = VerificationRunRecord(
-            flow: .disclosedAgePresentation, role: .verifier,
+            flow: .disclosedNamePresentation, role: .verifier,
             credentialKind: request.credentialSource == .twdiw ? .governmentWallet : .selfIssued,
             transport: .bluetooth, succeeded: accepted,
             transportMilliseconds: VerificationClock.milliseconds(from: requestShownAt ?? started, to: started),

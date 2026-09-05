@@ -1,11 +1,11 @@
-//! Generates the immutable OpenAC age-profile keys and exercises the complete
+//! Generates immutable OpenAC field-profile keys and exercises the complete
 //! linked proof before anything is published for the iOS app.
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use openac_age_mobile_app::{
-    create_age_prepare_input, create_age_show_input, generate_shared_blinds, prove_jwt,
+    create_name_prepare_input, create_name_show_input, generate_shared_blinds, prove_jwt,
     prove_show, reblind_jwt, reblind_show, setup_jwt_keys, setup_show_keys,
-    verify_age_presentation,
+    verify_name_presentation,
 };
 use p256::ecdsa::{signature::Signer, Signature, SigningKey};
 use rand_core::OsRng;
@@ -19,7 +19,10 @@ fn b64(bytes: impl AsRef<[u8]>) -> String {
 
 fn coordinates(key: &SigningKey) -> (String, String) {
     let point = key.verifying_key().to_encoded_point(false);
-    (b64(point.x().expect("P-256 x")), b64(point.y().expect("P-256 y")))
+    (
+        b64(point.x().expect("P-256 x")),
+        b64(point.y().expect("P-256 y")),
+    )
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -60,9 +63,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let holder = SigningKey::random(&mut OsRng);
     let (issuer_x, issuer_y) = coordinates(&issuer);
     let (holder_x, holder_y) = coordinates(&holder);
-    let disclosure = b64(br#"["fixed-test-salt","birthdate","1990-01-01"]"#);
+    // Production uses a 128-bit salt, encoded as 22 base64url characters. Keep
+    // the vector at that profile width because upstream OpenAC's ClaimHasher
+    // accepts the two-block SHA-256 form used by those disclosures.
+    let disclosure = b64("[\"0123456789abcdefghijkl\",\"name\",\"黃彥霖\"]".as_bytes());
     let digest = b64(Sha256::digest(disclosure.as_bytes()));
-    let header = b64(serde_json::to_vec(&json!({"alg":"ES256","typ":"vc+sd-jwt"}))?);
+    let header = b64(serde_json::to_vec(
+        &json!({"alg":"ES256","typ":"vc+sd-jwt"}),
+    )?);
     let payload = b64(serde_json::to_vec(&json!({
         "iss": "did:key:openac-age-test-issuer",
         "nbf": 1,
@@ -72,28 +80,51 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }))?);
     let signing_input = format!("{header}.{payload}");
     let signature: Signature = issuer.sign(signing_input.as_bytes());
-    let sd_jwt = format!("{signing_input}.{}~{disclosure}~", b64(signature.to_bytes()));
+    let sd_jwt = format!(
+        "{signing_input}.{}~{disclosure}~",
+        b64(signature.to_bytes())
+    );
 
-    let prepared = create_age_prepare_input(
-        docs.clone(), sd_jwt, issuer_x.clone(), issuer_y.clone(),
-    )?;
+    let prepared =
+        create_name_prepare_input(docs.clone(), sd_jwt, issuer_x.clone(), issuer_y.clone())?;
     let jwt_timing = prove_jwt(docs.clone())?;
-    let nonce = "fixed-openac-age-request-nonce-0123456789".to_owned();
+    let nonce = "fixed-openac-name-request-nonce-0123456789".to_owned();
     let holder_signature: Signature = holder.sign(nonce.as_bytes());
-    create_age_show_input(
-        docs.clone(), nonce.clone(), b64(holder_signature.to_bytes()),
-        prepared.claim_name.clone(), prepared.claim_format, 2008_0901,
+    create_name_show_input(
+        docs.clone(),
+        nonce.clone(),
+        b64(holder_signature.to_bytes()),
+        prepared.claim_name.clone(),
+        prepared.claim_format,
+        "黃彥霖".to_owned(),
     )?;
     let show_timing = prove_show(docs.clone())?;
     generate_shared_blinds(docs.clone())?;
     reblind_jwt(docs.clone())?;
     reblind_show(docs.clone())?;
-    let accepted = verify_age_presentation(
-        docs.clone(), nonce, prepared.claim_name, prepared.claim_format, 2008_0901,
-        issuer_x, issuer_y,
+    let accepted = verify_name_presentation(
+        docs.clone(),
+        nonce.clone(),
+        prepared.claim_name.clone(),
+        prepared.claim_format,
+        "黃彥霖".to_owned(),
+        issuer_x.clone(),
+        issuer_y.clone(),
     )?;
     if !accepted {
-        return Err("linked age proof rejected its own fixed vector".into());
+        return Err("linked UTF-8 name proof rejected its own fixed vector".into());
+    }
+    let wrong_name_accepted = verify_name_presentation(
+        docs,
+        nonce,
+        prepared.claim_name,
+        prepared.claim_format,
+        "王小明".to_owned(),
+        issuer_x,
+        issuer_y,
+    )?;
+    if wrong_name_accepted {
+        return Err("linked UTF-8 name proof accepted a different target name".into());
     }
     println!(
         "linked proof accepted; prepare={} ms show={} ms",

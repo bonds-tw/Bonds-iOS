@@ -2,7 +2,7 @@ import CryptoKit
 import Foundation
 
 /// Experimental local transport of TWDIW-profile SD-JWT + RFC 9901 KB-JWT.
-/// It discloses the birth date and signed metadata; it is not a ZK proof.
+/// It discloses the requested field and signed metadata; it is not a ZK proof.
 enum SDJWTAgePresentation {
     private struct Envelope: Codable {
         let format: String
@@ -10,42 +10,46 @@ enum SDJWTAgePresentation {
     }
 
     static func audience(for request: AgePredicateProofRequest) throws -> String {
-        "urn:bonds:offline-age:" + Data(SHA256.hash(data: Data(try request.encodedForTransport().utf8)))
+        "urn:bonds:offline-field:" + Data(SHA256.hash(data: Data(try request.encodedForTransport().utf8)))
             .base64URLEncodedString()
     }
 
     static func create(material: AgePredicateCredentialMaterial,
                        request: AgePredicateProofRequest, now: Date = Date()) throws -> Data {
-        guard request.disclosesBirthdate else { throw AgePredicateProofError.statementMismatch }
+        guard request.usesSDJWT else { throw AgePredicateProofError.statementMismatch }
         try request.validateFreshness(now: now)
         let credential = try TWDIWCredentialReader.read(material.sdJWT, now: now)
         guard credential.holderKey.x963Representation == material.holderKey.publicKeyX963 else {
             throw AgePredicateProofError.proofRejected
         }
-        let birth = try birthClaim(in: credential)
-        let sdJWT = OID4VPResponder.reserialise(credential, disclosing: [birth.name])
+        let claim = request.checksName ? try nameClaim(in: credential) : try birthClaim(in: credential)
+        let sdJWT = OID4VPResponder.reserialise(credential, disclosing: [claim.name])
         let input = try encode(["alg": "ES256", "typ": "kb+jwt"]) + "." + encode([
             "nonce": request.nonce, "aud": audience(for: request),
             "iat": floor(now.timeIntervalSince1970),
             "sd_hash": Data(SHA256.hash(data: Data(sdJWT.utf8))).base64URLEncodedString(),
         ])
         let signature = try material.holderKey.signature(for: Data(input.utf8))
-        let envelope = Envelope(format: "bonds-sd-jwt-age-v1", presentation:
+        let envelope = Envelope(format: request.checksName
+            ? "bonds-sd-jwt-name-v1" : "bonds-sd-jwt-age-v1", presentation:
             sdJWT + input + "." + signature.base64URLEncodedString())
         return try JSONEncoder().encode(envelope)
     }
 
     /// Pure, local verification. No URLSession, key fetching, or status query.
-    /// Returns the age predicate; a false predicate is a failed age check even
-    /// when the signatures are valid. Nothing from the credential is persisted.
+    /// Returns the requested age or exact-name predicate. A false predicate is
+    /// a failed check even when the signatures are valid. Nothing from the
+    /// credential is persisted.
     static func verify(_ data: Data, request: AgePredicateProofRequest,
                        trust: OfflineIssuerTrustLookup, now: Date = Date()) throws -> Bool {
-        guard request.disclosesBirthdate, data.count <= 128_000 else {
+        guard request.usesSDJWT, data.count <= 128_000 else {
             throw AgePredicateProofError.malformedPackage
         }
         try request.validateFreshness(now: now)
         let envelope = try JSONDecoder().decode(Envelope.self, from: data)
-        guard envelope.format == "bonds-sd-jwt-age-v1",
+        let expectedFormat = request.checksName
+            ? "bonds-sd-jwt-name-v1" : "bonds-sd-jwt-age-v1"
+        guard envelope.format == expectedFormat,
               let boundary = envelope.presentation.lastIndex(of: "~") else {
             throw AgePredicateProofError.malformedPackage
         }
@@ -65,7 +69,9 @@ enum SDJWTAgePresentation {
                 throw AgePredicateProofError.credentialIsNotTrusted
             }
         case .selfIssued:
-            guard credential.credentialType == "SelfIssuedMyDataAgeCredential",
+            let expectedType = request.checksName
+                ? "SelfIssuedMyDataNameCredential" : "SelfIssuedMyDataAgeCredential"
+            guard credential.credentialType == expectedType,
                   let issuer = try? JWKDIDKey.p256PublicKey(fromDID: credential.issuerDID),
                   issuer.x963Representation == credential.holderKey.x963Representation else {
                 throw AgePredicateProofError.sourceMismatch
@@ -86,8 +92,13 @@ enum SDJWTAgePresentation {
               credential.holderKey.isValidSignature(signature, for: Data((segments[0] + "." + segments[1]).utf8)) else {
             throw AgePredicateProofError.proofRejected
         }
-        let birth = try birthClaim(in: credential)
         guard credential.disclosedClaims.count == 1 else { throw AgePredicateProofError.statementMismatch }
+        if request.checksName {
+            let name = try nameClaim(in: credential)
+            guard let target = request.targetName else { throw AgePredicateProofError.statementMismatch }
+            return name.value.utf8.elementsEqual(target.utf8)
+        }
+        let birth = try birthClaim(in: credential)
         return try dateValue(birth.value) <= request.cutoffValue(claimFormat: 2)
     }
 
@@ -95,6 +106,18 @@ enum SDJWTAgePresentation {
         let matches = credential.disclosedClaims.filter { AgePredicateProofPackage.supportedBirthClaimNames.contains($0.name) }
         guard matches.count == 1, let match = matches.first else { throw AgePredicateProofError.noBirthDate }
         _ = try dateValue(match.value)
+        return match
+    }
+
+    private static func nameClaim(in credential: TWDIWCredential) throws -> (name: String, value: String) {
+        let matches = credential.disclosedClaims.filter {
+            AgePredicateProofPackage.supportedNameClaimNames.contains($0.name)
+        }
+        guard matches.count == 1, let match = matches.first,
+              match.value.precomposedStringWithCanonicalMapping.utf8.elementsEqual(match.value.utf8),
+              (1...31).contains(match.value.utf8.count) else {
+            throw AgePredicateProofError.noFullName
+        }
         return match
     }
 

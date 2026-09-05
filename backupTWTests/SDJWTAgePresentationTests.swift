@@ -25,6 +25,27 @@ struct SDJWTAgePresentationTests {
             issuerPublicKeyX963: key.publicKeyX963, holderKey: key, cacheKey: "synthetic")
     }
 
+    private func nameMaterial() throws -> AgePredicateCredentialMaterial {
+        let key = try DeviceKey.loadOrCreate(tag: "tw.bonds.tests.offline-age", installRecord: nil)
+        let did = try DIDKey.did(fromP256PublicKeyX963: key.publicKeyX963)
+        let model = NationalIDModel(nationality: "fixture", unifiedNo: "A123456789", name: "黃彥霖",
+                                    birthdate: "0830306", addressOfHousehold: "fixture")
+        let (vc, disclosures) = VerifiableCredential.selectivelyDisclosableNationalID(
+            model, issuerDID: did, validFrom: now)
+        let envelope = MOICASignedCredential(
+            payload: VerifiableCredential.base64URLEncoded(try vc.canonicalBytes()),
+            proof: MOICACredentialProof(
+                tbsConstruction: MOICACredentialProof.payloadDigestHexConstruction,
+                certificate: Data([1]).base64EncodedString(),
+                signature: Data(repeating: 0, count: 256).base64EncodedString()),
+            disclosures: disclosures.map(\.encoded))
+        let issued = try SelfIssuedMyDataNameCredential.issue(
+            stored: envelope.serialized(), signedBy: key, now: now)
+        return AgePredicateCredentialMaterial(
+            sdJWT: issued.sdJWT, issuerDID: issued.issuerDID,
+            issuerPublicKeyX963: key.publicKeyX963, holderKey: key, cacheKey: "synthetic-name")
+    }
+
     @Test(.enabled(if: DeviceKeyAvailability.isAvailable))
     func genuineSignaturesVerifyLocallyButWrongRequestTamperingAndExpiryFail() throws {
         defer { try? DeviceKey.deleteKey(tag: "tw.bonds.tests.offline-age", installRecord: nil) }
@@ -68,6 +89,27 @@ struct SDJWTAgePresentationTests {
                                                   minimumAge: 100, discloseBirthdate: true, now: now)
         let olderData = try SDJWTAgePresentation.create(material: material, request: older, now: now)
         #expect(try !SDJWTAgePresentation.verify(olderData, request: older, trust: .unavailable, now: now))
+    }
+
+    @Test(.enabled(if: DeviceKeyAvailability.isAvailable))
+    func exactUTF8NameMatchesAndADifferentRequestedNameReturnsFalse() throws {
+        defer { try? DeviceKey.deleteKey(tag: "tw.bonds.tests.offline-age", installRecord: nil) }
+        let material = try nameMaterial()
+        let matching = try AgePredicateProofRequest(
+            purpose: "test", credentialSource: .selfIssued,
+            targetName: "黃彥霖", discloseName: true, now: now)
+        let matchingData = try SDJWTAgePresentation.create(
+            material: material, request: matching, now: now)
+        #expect(try SDJWTAgePresentation.verify(
+            matchingData, request: matching, trust: .unavailable, now: now))
+
+        let different = try AgePredicateProofRequest(
+            purpose: "test", credentialSource: .selfIssued,
+            targetName: "另一個人", discloseName: true, now: now)
+        let differentData = try SDJWTAgePresentation.create(
+            material: material, request: different, now: now)
+        #expect(try !SDJWTAgePresentation.verify(
+            differentData, request: different, trust: .unavailable, now: now))
     }
 
     @Test func formatCannotBeSilentlyDowngradedOrPostedToTheWeb() throws {

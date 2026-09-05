@@ -53,10 +53,47 @@ index 30612fa..7a8bc39 100644
          Command::new("bash")
              .current_dir(&witnesscalc_path)
              .arg("./build_gmp.sh")
-@@ -316,6 +351,29 @@ fn build_for_circuits_with_different_versions(
+@@ -239,6 +274,7 @@ pub fn build_and_link(circuits_dir: &str) {
+     if v2_2_0_circuit_files.len() > 0 {
+         Command::new("git")
+             .arg("checkout")
++            .arg("--force")
+             .arg("secq256r1-support-v2.2.0")
+             .current_dir(&witnesscalc_path)
+             .spawn()
+@@ -316,6 +352,58 @@ fn build_for_circuits_with_different_versions(
  
      let circuit_names_semicolon = circuit_names.join(";");
  
++    // Large JWT circuits overflow the worker stack because the upstream C++
++    // loader uses variable-length arrays for its serialized IO map. Rewrite
++    // those temporary buffers to std::vector immediately before each build;
++    // the checkout above may have refreshed the loader source.
++    let loader_path = witnesscalc_path.join("src").join("witnesscalc.cpp");
++    if let Ok(mut loader) = fs::read_to_string(&loader_path) {
++        let original = loader.clone();
++        for (source, replacement) in [
++            ("#include <memory>", "#include <memory>\n#include <vector>"),
++            ("u32 index[get_size_of_io_map()];", "std::vector<u32> index(get_size_of_io_map());"),
++            ("memcpy((void *)index,", "memcpy((void *)index.data(),"),
++            ("u32 dataiomap[(buffer_size - inisize) / sizeof(u32)];", "std::vector<u32> dataiomap((buffer_size - inisize) / sizeof(u32));"),
++            ("u32 dataiomap[(buffer_size-inisize)/sizeof(u32)];", "std::vector<u32> dataiomap((buffer_size-inisize)/sizeof(u32));"),
++            ("memcpy((void *)dataiomap,", "memcpy((void *)dataiomap.data(),"),
++            ("u32 *pu32 = dataiomap;", "u32 *pu32 = dataiomap.data();"),
++            ("u32* pu32 = dataiomap;", "u32* pu32 = dataiomap.data();"),
++            ("IOFieldDef defs[n];", "std::vector<IOFieldDef> defs(n);"),
++            ("IODef defs[n];", "std::vector<IODef> defs(n);"),
++            ("calloc(10, sizeof(IOFieldDef))", "calloc(p.len, sizeof(IOFieldDef))"),
++        ] {
++            loader = loader.replace(source, replacement);
++        }
++        let unsafe_stack_forms = ["u32 index[", " dataiomap[", " defs[n];", "= dataiomap;"];
++        if loader == original || unsafe_stack_forms.iter().any(|form| loader.contains(form)) {
++            panic!("reviewed witnesscalc heap rewrite no longer applies");
++        }
++        fs::write(&loader_path, loader).expect("Failed to move witness loader buffers to heap");
++    }
++
 +    // `git checkout` above may refresh the tracked Makefile, so apply this
 +    // immediately before each make invocation rather than only after clone.
 +    // Without the explicit floor CMake records the current SDK (26.x) in the

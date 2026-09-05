@@ -10,6 +10,10 @@ overlay_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 zkid_dir="$1"
 expected_commit="b395e09c225ff45b003f0087c28e2e208e22f944"
 
+# CMake is installed through the user's Python tool directory on the build
+# machine. It is needed by the host-side Cargo build as well as both iOS slices.
+export PATH="${HOME}/Library/Python/3.9/bin:${PATH}"
+
 actual_commit="$(git -C "$zkid_dir" rev-parse HEAD)"
 if [ "$actual_commit" != "$expected_commit" ]; then
   echo "refusing unreviewed zkID revision: $actual_commit" >&2
@@ -21,6 +25,7 @@ if ! git -C "$zkid_dir" diff --quiet || ! git -C "$zkid_dir" diff --cached --qui
 fi
 
 git -C "$zkid_dir" apply "$overlay_dir/zkid-mobile.patch"
+git -C "$zkid_dir" apply "$overlay_dir/utf8-name-circuit.patch"
 install -m 0644 "$overlay_dir/predicate.rs" \
   "$zkid_dir/wallet-unit-poc/mobile/src/predicate.rs"
 install -m 0644 "$overlay_dir/age_assets.rs" \
@@ -30,6 +35,13 @@ install -m 0644 "$overlay_dir/cargo-config.toml" \
   "$zkid_dir/wallet-unit-poc/mobile/.cargo/config.toml"
 
 mobile_dir="$zkid_dir/wallet-unit-poc/mobile"
+circuit_dir="$zkid_dir/wallet-unit-poc/circom"
+(
+  cd "$circuit_dir"
+  npm install --ignore-scripts --no-audit --no-fund
+  bash scripts/compile.sh jwt_2k
+  bash scripts/compile.sh show
+)
 cargo fetch --manifest-path "$mobile_dir/Cargo.toml"
 adapter_dir="$(find "${CARGO_HOME:-$HOME/.cargo}/git/checkouts" \
   -path '*/witnesscalc_adapter-*/e5a82bc' -type d -print -quit)"
@@ -43,6 +55,18 @@ elif ! git -C "$adapter_dir" apply --reverse --check "$overlay_dir/witnesscalc-a
   echo "witnesscalc_adapter overlay no longer applies cleanly" >&2
   exit 66
 fi
+
+# Cargo fingerprints git dependencies by their pinned revision. Because this
+# reviewed build patches that checkout in place, remove only the adapter and
+# its native consumer so neither the host tool nor an iOS slice can reuse a
+# build-script binary from an earlier overlay revision.
+cargo clean --manifest-path "$mobile_dir/Cargo.toml" --release \
+  -p witnesscalc-adapter -p ecdsa-spartan2
+if [ -d "$mobile_dir/build" ] && [ ! -f "$mobile_dir/build/CACHEDIR.TAG" ]; then
+  printf '%s\n' 'Signature: 8a477f597d28d172789f06886806bc55' > "$mobile_dir/build/CACHEDIR.TAG"
+fi
+cargo clean --manifest-path "$mobile_dir/Cargo.toml" --target-dir "$mobile_dir/build" --release \
+  -p witnesscalc-adapter -p ecdsa-spartan2
 
 for artifact in \
   "$zkid_dir/wallet-unit-poc/circom/build/cpp/jwt_2k.cpp" \
@@ -77,8 +101,7 @@ build_slice()
 {
   local target="$1"
   local label="$2"
-  PATH="${HOME}/Library/Python/3.9/bin:${PATH}" \
-    CONFIGURATION=release \
+  CONFIGURATION=release \
     IOS_ARCHS="$target" \
     IPHONEOS_DEPLOYMENT_TARGET=16.0 \
     ./target/release/ios

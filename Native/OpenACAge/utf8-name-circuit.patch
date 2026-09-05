@@ -1,0 +1,214 @@
+diff --git a/wallet-unit-poc/circom/circuits/components/claim-decoder.circom b/wallet-unit-poc/circom/circuits/components/claim-decoder.circom
+index 2f3c49a..038efa5 100644
+--- a/wallet-unit-poc/circom/circuits/components/claim-decoder.circom
++++ b/wallet-unit-poc/circom/circuits/components/claim-decoder.circom
+@@ -21,6 +21,9 @@ template ClaimDecoder(maxMatches, maxClaimsLength) {
+     signal output decodedClaims[maxMatches][decodedLen];
+
+     component paddedClaims[maxMatches];
++    component claimIsDash[maxMatches][maxClaimsLength];
++    component claimIsUnder[maxMatches][maxClaimsLength];
++    signal standardClaims[maxMatches][maxClaimsLength];
+     signal paddedOrConst[maxMatches][maxClaimsLength];
+     component claimDecoders[maxMatches];
+
+@@ -31,7 +34,18 @@ template ClaimDecoder(maxMatches, maxClaimsLength) {
+         paddedClaims[i].length <== claimLengths[i];
+
+         for (var j = 0; j < maxClaimsLength; j++) {
+-            paddedOrConst[i][j] <== paddedClaims[i].out[j] * decodeFlags[i] + 65 * (1 - decodeFlags[i]);
++            // SD-JWT disclosures use base64url. The generic decoder below
++            // accepts the standard alphabet, so translate '-' to '+' and '_'
++            // to '/' while preserving every other byte.
++            claimIsDash[i][j] = IsEqual();
++            claimIsDash[i][j].in[0] <== paddedClaims[i].out[j];
++            claimIsDash[i][j].in[1] <== 45;
++            claimIsUnder[i][j] = IsEqual();
++            claimIsUnder[i][j].in[0] <== paddedClaims[i].out[j];
++            claimIsUnder[i][j].in[1] <== 95;
++            standardClaims[i][j] <== paddedClaims[i].out[j]
++                - 2 * claimIsDash[i][j].out - 48 * claimIsUnder[i][j].out;
++            paddedOrConst[i][j] <== standardClaims[i][j] * decodeFlags[i] + 65 * (1 - decodeFlags[i]);
+         }
+
+         claimDecoders[i] = Base64Decode(decodedLen);
+diff --git a/wallet-unit-poc/circom/circuits/components/claim-value-normalizer.circom b/wallet-unit-poc/circom/circuits/components/claim-value-normalizer.circom
+index f5af8b5..cefbd99 100644
+--- a/wallet-unit-poc/circom/circuits/components/claim-value-normalizer.circom
++++ b/wallet-unit-poc/circom/circuits/components/claim-value-normalizer.circom
+@@ -2,13 +2,14 @@ pragma circom 2.2.3;
+
+ include "circomlib/circuits/comparators.circom";
+ include "../utils/utils.circom";
++include "../keyless_zk_proofs/hashtofield.circom";
+
+ /// @title ClaimValueNormalizer
+ /// @notice Converts extracted claim value bytes to a canonical integer.
+ /// @param valueLen: maximum length of value bytes
+ /// @input value: array of extracted value bytes (ASCII)
+ /// @input valueLength: actual number of meaningful bytes
+-/// @input format: 0=bool, 1=uint, 2=iso_date (YYYY-MM-DD), 3=roc_date (YYYMMDD), 4=string (big-endian byte pack)
++/// @input format: 0=bool, 1=uint, 2=iso_date (YYYY-MM-DD), 3=roc_date (YYYMMDD), 4=string (big-endian byte pack), 5=utf8_hash
+ /// @output normalizedValue: single integer representation suitable for numeric comparison
+ template ClaimValueNormalizer(valueLen) {
+     signal input value[valueLen];
+@@ -18,13 +19,13 @@ template ClaimValueNormalizer(valueLen) {
+     signal output normalizedValue;
+
+     // ===== Format selectors =====
+-    component formatEq[5];
++    component formatEq[6];
+     signal isBoolFormat;
+     signal isUintFormat;
+     signal isIsoDateFormat;
+     signal isRocDateFormat;
+
+-    for (var i = 0; i < 5; i++) {
++    for (var i = 0; i < 6; i++) {
+         formatEq[i] = IsEqual();
+         formatEq[i].in[0] <== format;
+         formatEq[i].in[1] <== i;
+@@ -35,10 +36,11 @@ template ClaimValueNormalizer(valueLen) {
+     isIsoDateFormat <== formatEq[2].out;
+     isRocDateFormat <== formatEq[3].out;
+     signal isStringFormat <== formatEq[4].out;
++    signal isUtf8HashFormat <== formatEq[5].out;
+
+-    // Require exactly one supported format (0..4) to be selected, so an
++    // Require exactly one supported format (0..5) to be selected, so an
+     // out-of-range format is rejected rather than normalized to 0.
+-    signal formatSelectorSum <== isBoolFormat + isUintFormat + isIsoDateFormat + isRocDateFormat + isStringFormat;
++    signal formatSelectorSum <== isBoolFormat + isUintFormat + isIsoDateFormat + isRocDateFormat + isStringFormat + isUtf8HashFormat;
+     formatSelectorSum === 1;
+
+     // ===== Format 0: Boolean — "1" or "true" → 1, else → 0 =====
+@@ -213,11 +215,32 @@ template ClaimValueNormalizer(valueLen) {
+     }
+     signal strValue <== strAccum[valueLen];
+
++    // ===== Format 5: UTF-8 text — Poseidon(bytes, length) =====
++    // This keeps the complete byte string for non-ASCII names rather than
++    // truncating it into the 64-bit format-4 slot. The same 31-byte-width hash
++    // is computed from verifier-supplied target bytes in Show. Length is part
++    // of the hash, so zero padding cannot create an alias.
++    var UTF8_HASH_LEN = 31;
++    component utf8LenLe31 = LessEqThan(log2Ceil(valueLen + 1));
++    utf8LenLe31.in[0] <== valueLength;
++    utf8LenLe31.in[1] <== UTF8_HASH_LEN;
++    isUtf8HashFormat * (1 - utf8LenLe31.out) === 0;
++
++    signal utf8Value[UTF8_HASH_LEN];
++    for (var i = 0; i < UTF8_HASH_LEN; i++) {
++        utf8Value[i] <== value[i];
++    }
++    component utf8Hasher = HashBytesToFieldWithLen(UTF8_HASH_LEN);
++    utf8Hasher.in <== utf8Value;
++    utf8Hasher.len <== valueLength;
++    signal utf8HashValue <== utf8Hasher.hash;
++
+     signal normBool <== isBoolFormat    * boolValue;
+     signal normUint <== isUintFormat    * uintValue;
+     signal normIso  <== isIsoDateFormat * isoDateValue;
+     signal normRoc  <== isRocDateFormat * rocDateValue;
+     signal normStr  <== isStringFormat  * strValue;
++    signal normUtf8 <== isUtf8HashFormat * utf8HashValue;
+
+-    normalizedValue <== normBool + normUint + normIso + normRoc + normStr;
++    normalizedValue <== normBool + normUint + normIso + normRoc + normStr + normUtf8;
+ }
+diff --git a/wallet-unit-poc/circom/circuits/components/eval-predicate.circom b/wallet-unit-poc/circom/circuits/components/eval-predicate.circom
+index aa32c4f..17ea718 100644
+--- a/wallet-unit-poc/circom/circuits/components/eval-predicate.circom
++++ b/wallet-unit-poc/circom/circuits/components/eval-predicate.circom
+@@ -36,14 +36,19 @@ template EvalPredicate(VALUE_BITS) {
+     // Exactly one supported operator must be selected.
+     (isLe + isGe + isEq) - 1 === 0;
+
++    // LE/GE are bounded integer operations. EQ is also used for full-field
++    // hashes, so do not feed a hash into the 64-bit comparators when equality
++    // is selected. The equality gate below still compares the complete field
++    // elements.
++    signal orderedOp <== isLe + isGe;
+     component leCheck = LessEqThan(VALUE_BITS);
+-    leCheck.in[0] <== claimValue;
+-    leCheck.in[1] <== compareValue;
++    leCheck.in[0] <== claimValue * orderedOp;
++    leCheck.in[1] <== compareValue * orderedOp;
+
+     // Reuse <= by swapping operands for >=.
+     component geCheck = LessEqThan(VALUE_BITS);
+-    geCheck.in[0] <== compareValue;
+-    geCheck.in[1] <== claimValue;
++    geCheck.in[0] <== compareValue * orderedOp;
++    geCheck.in[1] <== claimValue * orderedOp;
+
+     component eqCheck = IsEqual();
+     eqCheck.in[0] <== claimValue;
+diff --git a/wallet-unit-poc/circom/circuits/show.circom b/wallet-unit-poc/circom/circuits/show.circom
+index 4f88ae8..7322215 100644
+--- a/wallet-unit-poc/circom/circuits/show.circom
++++ b/wallet-unit-poc/circom/circuits/show.circom
+@@ -64,7 +64,26 @@ template Show(nClaims, maxPredicates, maxLogicTokens, valueBits) {
+     component rhsNameHashers[maxPredicates];
+     signal predicateClaimIdentifiers[maxPredicates];
+     signal predicateRhsClaimIdentifiers[maxPredicates];
++    signal resolvedPredicateRhsValues[maxPredicates];
++    component rhsLiteralTextLenZero[maxPredicates];
++    component lhsNameLenFits[maxPredicates];
++    component rhsNameLenFits[maxPredicates];
++    signal rhsIsLiteralText[maxPredicates];
++    signal literalTextRhs[maxPredicates];
++    signal numericLiteralActive[maxPredicates];
++    signal numericLiteralRhs[maxPredicates];
++    signal referenceRhs[maxPredicates];
+     for (var p = 0; p < maxPredicates; p++) {
++        lhsNameLenFits[p] = LessEqThan(6);
++        lhsNameLenFits[p].in[0] <== predicateClaimNameLens[p];
++        lhsNameLenFits[p].in[1] <== NAME_ID_LEN;
++        lhsNameLenFits[p].out === 1;
++
++        rhsNameLenFits[p] = LessEqThan(6);
++        rhsNameLenFits[p].in[0] <== predicateRhsClaimNameLens[p];
++        rhsNameLenFits[p].in[1] <== NAME_ID_LEN;
++        rhsNameLenFits[p].out === 1;
++
+         lhsNameHashers[p] = HashBytesToFieldWithLen(NAME_ID_LEN);
+         lhsNameHashers[p].in  <== predicateClaimNames[p];
+         lhsNameHashers[p].len <== predicateClaimNameLens[p];
+@@ -74,6 +93,22 @@ template Show(nClaims, maxPredicates, maxLogicTokens, valueBits) {
+         rhsNameHashers[p].in  <== predicateRhsClaimNames[p];
+         rhsNameHashers[p].len <== predicateRhsClaimNameLens[p];
+         predicateRhsClaimIdentifiers[p] <== rhsNameHashers[p].hash;
++
++        // A non-empty RHS byte string in literal mode is a complete UTF-8
++        // equality target. Reuse the already-public RHS-name byte slots to
++        // avoid expanding the proof interface. Empty bytes preserve numeric
++        // literal behavior used by age comparisons; reference mode preserves
++        // claim-to-claim behavior.
++        rhsLiteralTextLenZero[p] = IsZero();
++        rhsLiteralTextLenZero[p].in <== predicateRhsClaimNameLens[p];
++        rhsIsLiteralText[p] <== (1 - predicateRhsIsRef[p]) * (1 - rhsLiteralTextLenZero[p].out);
++        rhsIsLiteralText[p] * (predicateOps[p] - 2) === 0;
++        rhsIsLiteralText[p] * predicateRhsValues[p] === 0;
++        literalTextRhs[p] <== rhsIsLiteralText[p] * predicateRhsClaimIdentifiers[p];
++        numericLiteralActive[p] <== (1 - predicateRhsIsRef[p]) * rhsLiteralTextLenZero[p].out;
++        numericLiteralRhs[p] <== numericLiteralActive[p] * predicateRhsValues[p];
++        referenceRhs[p] <== predicateRhsIsRef[p] * predicateRhsValues[p];
++        resolvedPredicateRhsValues[p] <== literalTextRhs[p] + numericLiteralRhs[p] + referenceRhs[p];
+     }
+
+     // Evaluate generalized predicates and then the postfix boolean expression
+@@ -83,7 +118,7 @@ template Show(nClaims, maxPredicates, maxLogicTokens, valueBits) {
+     expressionEval.predicateClaimRefs <== predicateClaimRefs;
+     expressionEval.predicateOps <== predicateOps;
+     expressionEval.predicateRhsIsRef <== predicateRhsIsRef;
+-    expressionEval.predicateRhsValues <== predicateRhsValues;
++    expressionEval.predicateRhsValues <== resolvedPredicateRhsValues;
+     expressionEval.claimIdentifierHashes <== claimIdentifierHashes;
+     expressionEval.predicateClaimIdentifiers <== predicateClaimIdentifiers;
+     expressionEval.predicateRhsClaimIdentifiers <== predicateRhsClaimIdentifiers;
+@@ -92,4 +127,3 @@ template Show(nClaims, maxPredicates, maxLogicTokens, valueBits) {
+     expressionEval.exprLen <== exprLen;
+     expressionResult <== expressionEval.finalResult;
+ }
+-
