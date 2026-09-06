@@ -89,9 +89,15 @@ final class MyDataCredentialUseCasesViewController: UIViewController {
                 comment: "MyData VC trust explanation"),
             symbol: "person.badge.shield.checkmark", tint: .systemPurple))
         stack.addArrangedSubview(makeCard(
+            title: NSLocalizedString("How to present", comment: "MyData VC how-to"),
+            body: NSLocalizedString(
+                "Open a verifier that asks one of these questions, then scan its QR from the Use tab. The answer is computed from the original and signed here only after you tap Present.",
+                comment: "MyData VC how-to"),
+            symbol: "qrcode.viewfinder", tint: .tintColor))
+        stack.addArrangedSubview(makeCard(
             title: NSLocalizedString("Pilot readiness", comment: "MyData VC readiness"),
             body: NSLocalizedString(
-                "Before enabling creation, each document type needs a tested parser, stable claim definitions, selective-disclosure signing, and matching verification at verifier.mashbean.net. Export and sharing are available now; credential creation stays gated until those checks exist.",
+                "Income, labour-insurance and household documents have parsers and a matching verifier at verifier.mashbean.net. Their layouts are still being confirmed against real downloads; the other document types can be viewed and exported only.",
                 comment: "MyData VC readiness"),
             symbol: "checklist", tint: .systemGray))
     }

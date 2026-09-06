@@ -37,7 +37,7 @@ extension MyDataVaultPreviewError: LocalizedError {
 final class MyDataVaultDocumentViewController: UICollectionViewController {
 
     private struct Row: Hashable {
-        enum Kind: Hashable { case fact, viewOriginal, share, credentialUseCases, replace, delete }
+        enum Kind: Hashable { case fact, viewOriginal, share, credentialUseCases, parsePreview, replace, delete }
         let id: String
         let title: String
         let value: String
@@ -139,6 +139,10 @@ final class MyDataVaultDocumentViewController: UICollectionViewController {
                 kind: .fact),
             Row(id: "integrity", title: NSLocalizedString("Integrity check", comment: ""),
                 value: Self.integrityMessage(integrity), kind: .fact),
+            Row(id: "answers", title: NSLocalizedString("Can answer", comment: "vault document: derivable claims"),
+                value: Self.answersMessage(documentTypeID: type?.id
+                    ?? entry?.displayName.flatMap(MyDataDocumentRegistry.knownDocument(in:))?.id),
+                kind: .fact),
         ])
 
         let actions = Group(id: "actions", title: NSLocalizedString("Manage", comment: ""), rows: [
@@ -159,7 +163,32 @@ final class MyDataVaultDocumentViewController: UICollectionViewController {
                 value: NSLocalizedString("Remove the original file and its fingerprint from this phone.", comment: ""),
                 kind: .delete),
         ])
+        #if DEBUG
+        // Development only: run this build's parser over the stored original
+        // and show what it read. This is how the real-document gate in
+        // docs/mydata-vc-verifier-scenarios.md is checked on a phone — the
+        // fields are shown once, in an alert, and not retained.
+        let debug = Group(id: "debug", title: "[DEBUG]", rows: [
+            Row(id: "parse-preview", title: "[DEBUG] Parse the original",
+                value: "Runs the derivation parser and shows the fields it read.",
+                kind: .parsePreview),
+        ])
+        return [facts, actions, debug]
+        #else
         return [facts, actions]
+        #endif
+    }
+
+    /// The questions this document can answer through a verifier's request,
+    /// or the plain fact that it cannot yet.
+    static func answersMessage(documentTypeID: String?) -> String {
+        guard let documentTypeID,
+              let type = MyDataDerivedCredentialType.lookup(documentTypeID: documentTypeID) else {
+            return NSLocalizedString("No verifier question is defined for this document yet. It can be viewed and exported.",
+                                     comment: "vault document: no derivation")
+        }
+        let questions = type.rules.map { MyDataDisclosureRule(id: $0, params: [:]).kindDescription }
+        return questions.joined(separator: "、")
     }
 
     static func integrityMessage(_ integrity: MyDataVaultArchive.Integrity) -> String {
@@ -191,7 +220,7 @@ final class MyDataVaultDocumentViewController: UICollectionViewController {
             switch row.kind {
             case .fact:
                 break
-            case .viewOriginal, .share, .credentialUseCases, .replace:
+            case .viewOriginal, .share, .credentialUseCases, .parsePreview, .replace:
                 content.textProperties.color = .tintColor
                 cell.accessories = [.disclosureIndicator()]
             case .delete:
@@ -245,9 +274,38 @@ final class MyDataVaultDocumentViewController: UICollectionViewController {
         case .viewOriginal: showOriginal()
         case .share: confirmShare()
         case .credentialUseCases: showCredentialUseCases()
+        case .parsePreview: showParsePreview()
         case .replace: replaceFromMyData()
         case .delete: confirmDelete()
         }
+    }
+
+    private func showParsePreview() {
+        #if DEBUG
+        let typeID = MyDataDocumentRegistry.lookup(id: documentID)?.id
+            ?? document?.entry?.displayName.flatMap(MyDataDocumentRegistry.knownDocument(in:))?.id
+        var message: String
+        do {
+            guard let typeID, let parser = MyDataDocumentParsers.parser(for: typeID) else {
+                throw MyDataDocumentParserError.notThisDocument
+            }
+            let data = try Self.previewPDFData(id: documentID, archive: archive)
+            guard let text = MyDataDocumentParsers.text(ofPDF: data) else {
+                throw MyDataDocumentParserError.notThisDocument
+            }
+            let parsed = try parser.parse(text: text)
+            message = parsed.parserVersion + "\n"
+                + parsed.fields.sorted { $0.key < $1.key }.map { "\($0.key) = \($0.value)" }.joined(separator: "\n")
+            if !parsed.periods.isEmpty {
+                message += "\nperiods: " + parsed.periods.map { "\($0.start)…\($0.end ?? "now")" }.joined(separator: ", ")
+            }
+        } catch {
+            message = "parse failed: \(error)"
+        }
+        let alert = UIAlertController(title: "[DEBUG] Parsed fields", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: ""), style: .default))
+        present(alert, animated: true)
+        #endif
     }
 
     private func showOriginal() {

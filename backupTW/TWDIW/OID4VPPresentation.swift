@@ -77,9 +77,13 @@ enum OID4VPPresentation {
     static func respond(to request: OID4VPRequest,
                         disclosing chosenClaims: Set<String>) async -> ResponseOutcome {
         do {
-            let responder = OID4VPResponder(session: .shared,
+            var responder = OID4VPResponder(session: .shared,
                                             store: try CredentialStore(),
                                             keyring: .app())
+            // The vault is optional here on purpose: a phone whose archive
+            // cannot open still presents government cards, and a derived
+            // request is then refused with 「no original of that kind」.
+            responder.vault = try? MyDataVaultArchive()
             _ = try await responder.respond(to: request, disclosing: chosenClaims)
             return ResponseOutcome(
                 message: NSLocalizedString("Presented. The verifier has your answer.",

@@ -226,6 +226,31 @@ enum UserFacingError {
         case .holderKeyUnavailable:
             return NSLocalizedString("This phone could not find the card's key, so it could not be presented.",
                                      comment: "vp response error: key")
+        case .sourceDocumentUnavailable:
+            return NSLocalizedString("Your data vault has no document of the kind this verifier asked about. Import it from MyData first.",
+                                     comment: "vp response error: no vault original")
+        case .sourceDocumentUnreadable(let reason):
+            switch reason {
+            case .notThisDocument:
+                return NSLocalizedString("The stored original does not read as the document this verifier asked about, so nothing was presented.",
+                                         comment: "vp response error: original not recognised")
+            case .missingField(let label):
+                return String(format: NSLocalizedString(
+                    "The stored original has no “%@” field this answer needs, so nothing was presented.",
+                    comment: "vp response error: original missing field"), label)
+            }
+        case .ruleMissing:
+            return NSLocalizedString("This verifier did not say what it wants to check, so nothing was presented.",
+                                     comment: "vp response error: no rule")
+        case .derivation(let reason):
+            switch reason {
+            case .documentDoesNotCoverRule:
+                return NSLocalizedString("Your stored document does not cover the year or condition this verifier asked about, so nothing was presented.",
+                                         comment: "vp response error: document does not cover rule")
+            case .ruleNotSupported, .ruleParameterMissing, .ruleParameterUnexpected:
+                return NSLocalizedString("This verifier's question is not one Bonds can answer yet, so nothing was presented.",
+                                         comment: "vp response error: rule unsupported")
+            }
         case .network:
             return NSLocalizedString("Could not reach the verifier. Check your connection and try again.",
                                      comment: "vp response error: network")

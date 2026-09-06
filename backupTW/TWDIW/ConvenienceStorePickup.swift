@@ -323,7 +323,11 @@ struct ConvenienceStorePickupClient {
         ]
         let payload: [String: Any] = ["transactionId": context.transactionID]
         let signingInput = try Self.base64URL(header) + "." + Self.base64URL(payload)
-        let signature = try receipt.holderKey.signature(for: Data(signingInput.utf8))
+        // A vault-derived presentation leaves no key to sign a follow-up with;
+        // the pickup flow only ever runs after a telecom card, so reaching this
+        // without one is a wrong request, not a missing key.
+        guard let holderKey = receipt.holderKey else { throw ConvenienceStorePickupError.unexpectedRequest }
+        let signature = try holderKey.signature(for: Data(signingInput.utf8))
         let jwt = signingInput + "." + signature.base64URLEncodedString()
 
         guard let module = URL(string: context.scenario.verifierModuleURL) else {

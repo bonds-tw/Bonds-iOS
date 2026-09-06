@@ -23,6 +23,16 @@ enum OID4VPResponseError: Error, Equatable {
     /// is the card's own — never `DeviceKey.defaultTag`.
     case holderKeyUnavailable
     case network
+    /// A vault-derived request, and the vault holds no original of that kind.
+    case sourceDocumentUnavailable
+    /// The original is there but its text did not parse as that document.
+    case sourceDocumentUnreadable(MyDataDocumentParserError)
+    /// The verifier asked for a derived credential without saying what its
+    /// question is. Without a rule there is nothing honest to compute.
+    case ruleMissing
+    /// The rule and the document did not meet, or the rule is not one this
+    /// build computes. Carries the reason so the holder can be told which.
+    case derivation(MyDataDerivationError)
     /// The verifier refused the posted token. `body` is what it said — captured
     /// so a refusal can be diagnosed the way the collection 400 was, off the
     /// server's own words rather than a guess about the format. Surfaced to the
@@ -38,7 +48,10 @@ struct OID4VPPresentedCredential {
 }
 
 private struct OID4VPResponseMaterial {
-    let holderKey: DeviceKey
+    /// A government card or the national ID: the outer VP JWT is signed by the
+    /// card's own key. `nil` for a vault-derived credential, which carries its
+    /// own KB-JWT and needs no wrapper.
+    let holderKey: DeviceKey?
     let presentations: [OID4VPPresentedCredential]
 }
 
@@ -47,7 +60,9 @@ private struct OID4VPResponseMaterial {
 struct OID4VPPresentationReceipt {
     let statusCode: Int
     let holderDID: String
-    let holderKey: DeviceKey
+    /// `nil` after a vault-derived presentation: its key was ephemeral, so no
+    /// follow-up (convenience-store pickup) can be signed with it — by design.
+    let holderKey: DeviceKey?
 }
 
 /// Builds and sends the response to an `OID4VPRequest`.
@@ -79,6 +94,9 @@ struct OID4VPResponder {
     let session: URLSession
     let store: CredentialStoring
     let keyring: HolderKeyring
+    /// The vault originals a derived credential is computed from. `nil` means
+    /// this responder cannot answer a `dc+sd-jwt` request at all.
+    var vault: MyDataVaultDocumentSource? = nil
     var now: () -> Date = Date.init
 
     /// Runs the whole response: pick the card, disclose only what was asked,
@@ -96,8 +114,10 @@ struct OID4VPResponder {
     func respondWithReceipt(to request: OID4VPRequest,
                             disclosing chosenClaims: Set<String>) async throws -> OID4VPPresentationReceipt {
         let material = try responseMaterial(request, chosenClaims: chosenClaims)
-        let holderKey = material.holderKey
         let presentations = material.presentations
+        guard let holderKey = material.holderKey else {
+            return try await postDerived(presentations, for: request)
+        }
         let holderDID = try JWKDIDKey.did(fromP256PublicKeyX963: holderKey.publicKeyX963)
         let vpToken = try buildVPToken(request: request,
                                        presented: presentations.map(\.serialized),
@@ -108,6 +128,39 @@ struct OID4VPResponder {
         return OID4VPPresentationReceipt(statusCode: status,
                                          holderDID: holderDID,
                                          holderKey: holderKey)
+    }
+
+    /// Posts a vault-derived SD-JWT VC. Under DCQL the token is an object keyed
+    /// by credential query id (OpenID4VP 1.0 §8.1) and there is no submission;
+    /// under Presentation Exchange the token is the bare string and the
+    /// submission maps it at `$` in its own format.
+    private func postDerived(_ presentations: [OID4VPPresentedCredential],
+                             for request: OID4VPRequest) async throws -> OID4VPPresentationReceipt {
+        guard let presented = presentations.first else { throw OID4VPResponseError.noMatchingCredential }
+        let status: Int
+        switch request.queryLanguage {
+        case .dcql:
+            let token = try Self.jsonString([presented.descriptorID: presented.serialized])
+            status = try await post(fields: [("vp_token", token), ("state", request.state)],
+                                    to: request.responseURI)
+        case .presentationExchange:
+            let submission: [String: Any] = [
+                "id": "submission-" + request.state,
+                "definition_id": request.definitionID,
+                "descriptor_map": [[
+                    "id": presented.descriptorID,
+                    "format": OID4VPCredentialFormat.sdJWTVC.rawValue,
+                    "path": "$",
+                ]],
+            ]
+            status = try await post(vpToken: presented.serialized, submission: submission,
+                                    state: request.state, to: request.responseURI)
+        }
+        // The presenting key was in memory for the duration of the mint and is
+        // already gone; the receipt names the credential's own issuer instead,
+        // which is that key's DID.
+        let issuer = (try? SDJWTVCReader.rawPayload(presented.serialized)["iss"] as? String) ?? ""
+        return OID4VPPresentationReceipt(statusCode: status, holderDID: issuer, holderKey: nil)
     }
 
     // MARK: - Selection
@@ -208,6 +261,18 @@ struct OID4VPResponder {
     private func responseMaterial(_ request: OID4VPRequest,
                                   chosenClaims: Set<String>) throws -> OID4VPResponseMaterial {
         let formats = Set(request.inputDescriptors.compactMap(\.credentialFormat))
+        if formats.contains(.sdJWTVC) || request.queryLanguage == .dcql {
+            // A derived credential never falls through to a government card:
+            // the verifier named a `vct` only a vault original can answer.
+            guard let vault else { throw OID4VPResponseError.sourceDocumentUnavailable }
+            let result = try MyDataDerivedPresenter.present(request, chosenClaims: chosenClaims,
+                                                            source: vault, now: now())
+            return OID4VPResponseMaterial(
+                holderKey: nil,
+                presentations: [.init(descriptorID: result.descriptorID,
+                                       format: .sdJWTVC,
+                                       serialized: result.presentation)])
+        }
         if formats.contains(.moica) {
             guard formats.count == 1 else { throw OID4VPResponseError.noMatchingCredential }
             return try selfIssuedMaterial(request, chosenClaims: chosenClaims)
@@ -474,19 +539,29 @@ struct OID4VPResponder {
                       submission: [String: Any],
                       state: String,
                       to responseURI: String) async throws -> Int {
-        guard let url = URL(string: responseURI),
-              let submissionJSON = try? JSONSerialization.data(withJSONObject: submission),
-              let submissionString = String(data: submissionJSON, encoding: .utf8) else {
-            throw OID4VPResponseError.network
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        request.httpBody = Data(formEncoded([
+        let submissionString = try Self.jsonString(submission)
+        return try await post(fields: [
             ("vp_token", vpToken),
             ("presentation_submission", submissionString),
             ("state", state),
-        ]).utf8)
+        ], to: responseURI)
+    }
+
+    private static func jsonString(_ object: [String: Any]) throws -> String {
+        guard let data = try? JSONSerialization.data(withJSONObject: object),
+              let string = String(data: data, encoding: .utf8) else {
+            throw OID4VPResponseError.network
+        }
+        return string
+    }
+
+    private func post(fields: [(String, String)], to responseURI: String) async throws -> Int {
+        guard let url = URL(string: responseURI) else { throw OID4VPResponseError.network }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.httpBody = Data(formEncoded(fields).utf8)
+        let submission = fields.first(where: { $0.0 == "presentation_submission" })?.1 ?? ""
 
         let data: Data
         let response: URLResponse
@@ -500,9 +575,8 @@ struct OID4VPResponder {
             // Also carry what we sent, so a schema refusal shows both sides — the
             // submission the verifier rejected and its reason — in one alert. The
             // fastest way to tell a stale build from a wrong guess.
-            if let sent = try? JSONSerialization.data(withJSONObject: submission),
-               let sentString = String(data: sent, encoding: .utf8) {
-                body = "sent=" + sentString + "  ||  " + (body ?? "")
+            if !submission.isEmpty {
+                body = "sent=" + submission + "  ||  " + (body ?? "")
             }
             #endif
             throw OID4VPResponseError.badStatus(http.statusCode, body: body)

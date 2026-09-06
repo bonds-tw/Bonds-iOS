@@ -109,8 +109,17 @@ final class DiscloseFieldsViewController: UITableViewController {
     }
 
     override func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
-        NSLocalizedString("A verifier is asking to see these. Turn off anything you would rather not show.",
-                          comment: "disclosure header")
+        let base = NSLocalizedString("A verifier is asking to see these. Turn off anything you would rather not show.",
+                                     comment: "disclosure header")
+        // A derived request carries the verifier's question. The holder reads
+        // it here, before the answer exists: the credential is computed from the
+        // vault original only after 「Present」, and only for this question.
+        guard let rule = request.rule else { return base }
+        return String(format: NSLocalizedString("The verifier asks: %@", comment: "disclosure header: rule question"),
+                      rule.question) + "\n\n"
+            + NSLocalizedString("The answer is computed from the original in your data vault and signed on this phone. The original itself is not sent.",
+                                comment: "disclosure header: derived explanation")
+            + "\n\n" + base
     }
 
     override func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
@@ -160,8 +169,8 @@ final class DiscloseFieldsViewController: UITableViewController {
                 flow: .oid4vpPresentation,
                 role: .holder,
                 credentialKind: request.inputDescriptors.contains(where: {
-                    $0.credentialFormat == .moica
-                }) ? .selfIssued : .governmentWallet,
+                    $0.credentialFormat == .moica || $0.credentialFormat == .sdJWTVC
+                }) || request.queryLanguage == .dcql ? .selfIssued : .governmentWallet,
                 transport: .https,
                 succeeded: outcome.succeeded,
                 preparationMilliseconds: requestFetchMilliseconds,
@@ -216,6 +225,14 @@ enum ClaimDisplayName {
             "birthdate": NSLocalizedString("Date of birth", comment: "claim: birthdate"),
             "addressOfHousehold": NSLocalizedString("Household address", comment: "claim: household address"),
             "ageOver18": NSLocalizedString("Age 18 or over", comment: "claim: age predicate"),
+            // Vault-derived claims (MyDataDerivedCredentialType).
+            "tax_year": NSLocalizedString("Tax year", comment: "claim: tax year"),
+            "payer_count": NSLocalizedString("Number of income sources", comment: "claim: payer count"),
+            "income_within_ceiling": NSLocalizedString("Income within the asked ceiling", comment: "claim: income predicate"),
+            "on_date": NSLocalizedString("Date checked", comment: "claim: insurance date"),
+            "insured_on_date": NSLocalizedString("Covered by labour insurance on that date", comment: "claim: insurance predicate"),
+            "registered_in_city": NSLocalizedString("Household registered in the asked city", comment: "claim: household city predicate"),
+            "registered_at_least_months": NSLocalizedString("Registered there for the asked duration", comment: "claim: household duration predicate"),
         ]
         return map[claim] ?? claim
     }

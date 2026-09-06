@@ -1094,6 +1094,16 @@
         }
       }
     },
+    "Can answer": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可回答的問題"
+          }
+        }
+      }
+    },
     "Can do this": {
       "localizations": {
         "zh-Hant": {
@@ -1870,6 +1880,16 @@
         }
       }
     },
+    "Covered by labour insurance on that date": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "當天有勞保"
+          }
+        }
+      }
+    },
     "Create a Valid Document": {
       "localizations": {
         "zh-Hant": {
@@ -2148,6 +2168,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "提供的資料"
+          }
+        }
+      }
+    },
+    "Date checked": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查詢日期"
           }
         }
       }
@@ -3448,6 +3478,16 @@
         }
       }
     },
+    "Has your household been registered in %@ for at least %@ months?": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的戶籍是否在 %@ 設籍滿 %@ 個月？"
+          }
+        }
+      }
+    },
     "Health insurance premium payments": {
       "localizations": {
         "zh-Hant": {
@@ -3559,6 +3599,16 @@
         }
       }
     },
+    "Household registered in the asked city": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "戶籍在詢問的縣市"
+          }
+        }
+      }
+    },
     "Household registration": {
       "localizations": {
         "zh-Hant": {
@@ -3575,6 +3625,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "其他發卡者的欄位名稱如何對應到這個 App 顯示的用語。未知欄位會以發卡者命名的原樣顯示，不會當成這個 App 自己的用語。"
+          }
+        }
+      }
+    },
+    "How to present": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "怎麼出示"
           }
         }
       }
@@ -3764,6 +3824,26 @@
         }
       }
     },
+    "Income within the asked ceiling": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所得在詢問的上限內"
+          }
+        }
+      }
+    },
+    "Income, labour-insurance and household documents have parsers and a matching verifier at verifier.mashbean.net. Their layouts are still being confirmed against real downloads; the other document types can be viewed and exported only.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所得、勞保、戶籍三種文件已有解析器與對應的查驗方，版面仍在用真實下載檔確認；其他文件只能檢視與匯出。"
+          }
+        }
+      }
+    },
     "Input National ID number (unzipping password)": {
       "localizations": {
         "zh-Hant": {
@@ -3820,6 +3900,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "完整性檢查未通過・在這支手機上重新建立 %@"
+          }
+        }
+      }
+    },
+    "Is your household registered in %@?": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的戶籍是否在 %@？"
           }
         }
       }
@@ -4915,6 +5005,16 @@
         }
       }
     },
+    "No verifier question is defined for this document yet. It can be viewed and exported.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這份文件還沒有對應的查驗問題，目前可以檢視與匯出。"
+          }
+        }
+      }
+    },
     "No web runs yet": {
       "localizations": {
         "zh-Hant": {
@@ -5236,6 +5336,16 @@
         }
       }
     },
+    "Number of income sources": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所得來源數"
+          }
+        }
+      }
+    },
     "OK": {
       "localizations": {
         "zh-Hant": {
@@ -5483,6 +5593,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "開啟「設定」"
+          }
+        }
+      }
+    },
+    "Open a verifier that asks one of these questions, then scan its QR from the Use tab. The answer is computed from the original and signed here only after you tap Present.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在查驗方網頁選好問題後，從「使用」分頁掃它的 QR。按下「出示」後，答案才會從原檔計算並在這裡簽署。"
           }
         }
       }
@@ -6485,6 +6605,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "註冊的 scheme 與 App 監聽的不一致"
+          }
+        }
+      }
+    },
+    "Registered there for the asked duration": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "設籍已滿詢問的期間"
           }
         }
       }
@@ -8197,6 +8327,16 @@
         }
       }
     },
+    "Tax year": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所得年度"
+          }
+        }
+      }
+    },
     "Technical detail": {
       "localizations": {
         "zh-Hant": {
@@ -8445,6 +8585,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "這支手機上找不到行動自然人憑證 App"
+          }
+        }
+      }
+    },
+    "The answer is computed from the original in your data vault and signed on this phone. The original itself is not sent.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "答案由資料保險箱裡的原檔計算並在這支手機簽署，原檔本身不會送出。"
           }
         }
       }
@@ -9888,6 +10038,26 @@
         }
       }
     },
+    "The stored original does not read as the document this verifier asked about, so nothing was presented.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保險箱裡的原檔讀不出查驗方要問的文件內容，所以沒有出示。"
+          }
+        }
+      }
+    },
+    "The stored original has no “%@” field this answer needs, so nothing was presented.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保險箱裡的原檔沒有這個答案需要的「%@」欄位，所以沒有出示。"
+          }
+        }
+      }
+    },
     "The synthetic package was not imported": {
       "localizations": {
         "zh-Hant": {
@@ -10004,6 +10174,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "已驗證的簽章保存在這支手機上。在政府 G2C 服務接受此 App 並核發收件地址前，正式收文仍未啟用。"
+          }
+        }
+      }
+    },
+    "The verifier asks: %@": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查驗方的問題：%@"
           }
         }
       }
@@ -12054,6 +12234,26 @@
         }
       }
     },
+    "This verifier did not say what it wants to check, so nothing was presented.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這個查驗方沒有說明要查什麼，所以沒有出示。"
+          }
+        }
+      }
+    },
+    "This verifier's question is not one Bonds can answer yet, so nothing was presented.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查驗方問的問題有備而來還無法回答，所以沒有出示。"
+          }
+        }
+      }
+    },
     "This version cannot create a document": {
       "localizations": {
         "zh-Hant": {
@@ -13009,6 +13209,16 @@
         }
       }
     },
+    "Was your %@ income at or below NT$%@?": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你 %@ 年度的所得是否在新臺幣 %@ 元以下？"
+          }
+        }
+      }
+    },
     "We do not know whether this was published.": {
       "localizations": {
         "zh-Hant": {
@@ -13045,6 +13255,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "網站驗證：%.2f 秒"
+          }
+        }
+      }
+    },
+    "Were you covered by labour insurance on %@?": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你在 %@ 當天是否有勞保？"
           }
         }
       }
@@ -13557,6 +13777,16 @@
         }
       }
     },
+    "Your data vault has no document of the kind this verifier asked about. Import it from MyData first.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "資料保險箱裡沒有查驗方要問的這種文件。請先從 MyData 匯入。"
+          }
+        }
+      }
+    },
     "Your document could be readable from a copy of the device's storage.": {
       "localizations": {
         "zh-Hant": {
@@ -13678,6 +13908,16 @@
         }
       }
     },
+    "Your stored document does not cover the year or condition this verifier asked about, so nothing was presented.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你保存的文件不涵蓋查驗方問的年度或條件，所以沒有出示。"
+          }
+        }
+      }
+    },
     "Your wallet has no credential of the kind this verifier asked for.": {
       "localizations": {
         "zh-Hant": {
@@ -13769,12 +14009,42 @@
         }
       }
     },
+    "household registered in a city": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "戶籍是否在某縣市"
+          }
+        }
+      }
+    },
     "iOS version": {
       "localizations": {
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
             "value": "iOS 版本"
+          }
+        }
+      }
+    },
+    "income within a ceiling for a tax year": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "某年度所得是否在上限內"
+          }
+        }
+      }
+    },
+    "labour insurance in force on a date": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "某日是否有勞保"
           }
         }
       }

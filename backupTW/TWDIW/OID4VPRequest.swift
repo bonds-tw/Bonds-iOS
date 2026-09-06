@@ -102,11 +102,24 @@ struct OID4VPRequestedField: Equatable {
     /// `$.credentialSubject.<name>`. `nil` for paths like `$.type` that select
     /// something other than a disclosable claim.
     var claimName: String? {
-        let prefix = "$.credentialSubject."
-        guard path.hasPrefix(prefix) else { return nil }
+        // Three spellings name a disclosable claim: TWDIW's
+        // `$.credentialSubject.<name>`, DCQL's `vc.credentialSubject.<name>`
+        // for the same card, and the flat `$.<name>` of an SD-JWT VC. Anything
+        // deeper, and anything that names the envelope rather than a claim, is
+        // a constraint on which credential matches — not a switch to show.
+        let prefixes = ["$.vc.credentialSubject.", "$.credentialSubject.", "$."]
+        guard let prefix = prefixes.first(where: { path.hasPrefix($0) }) else { return nil }
         let name = String(path.dropFirst(prefix.count))
-        return name.contains(".") ? nil : name
+        guard !name.isEmpty, !name.contains("."), !Self.envelopeNames.contains(name) else { return nil }
+        return name
     }
+
+    /// Top-level names of an SD-JWT VC that are never a claim a holder
+    /// chooses to reveal: they describe the credential, not the person.
+    static let envelopeNames: Set<String> = [
+        "type", "vct", "iss", "sub", "iat", "exp", "nbf", "cnf", "_sd", "_sd_alg",
+        "vc", "status", "source", "rule", "assurance",
+    ]
 }
 
 /// The inner credential format named by a presentation descriptor.
@@ -118,6 +131,18 @@ struct OID4VPRequestedField: Equatable {
 enum OID4VPCredentialFormat: String, Equatable {
     case sdJWT = "vc+sd-jwt"
     case moica = "vc+moica"
+    /// The IETF SD-JWT VC shape a vault-derived credential is minted in:
+    /// flat claims under `vct`, presented with a key-binding JWT. Distinct
+    /// from `vc+sd-jwt`, which in TWDIW's dialect means the VP-wrapped card.
+    case sdJWTVC = "dc+sd-jwt"
+}
+
+/// Which query language the verifier wrote its ask in. The response is shaped
+/// by this: Presentation Exchange answers with a `presentation_submission`,
+/// DCQL answers with a `vp_token` object keyed by credential query id.
+enum OID4VPQueryLanguage: Equatable {
+    case presentationExchange
+    case dcql
 }
 
 /// One alternative named by a DIF presentation definition.
@@ -172,8 +197,18 @@ struct OID4VPRequest: Equatable {
     let submissionRequirements: [OID4VPSubmissionRequirement]
 
     /// `presentation_definition.id`, echoed into the submission so the verifier
-    /// can tie the response to the request it sent.
+    /// can tie the response to the request it sent. Empty for a DCQL request,
+    /// which has no definition to echo.
     let definitionID: String
+
+    /// How the ask was written. Defaults to the TWDIW form so every existing
+    /// construction site keeps meaning what it meant.
+    var queryLanguage: OID4VPQueryLanguage = .presentationExchange
+
+    /// The verifier's question for a vault-derived credential, when it sent
+    /// one (`bonds_rule` in the signed request object). Absent for every
+    /// government-card request.
+    var rule: MyDataDisclosureRule? = nil
 
     /// Compatibility views for the original one-descriptor request. Callers that
     /// build a response use `inputDescriptors`, never these conveniences.
@@ -250,11 +285,42 @@ struct OID4VPRequest: Equatable {
             throw OID4VPRequestError.missingField("state")
         }
 
-        let definition = payload["presentation_definition"] as? [String: Any]
-        guard let definitionID = definition?["id"] as? String else {
+        let rule = MyDataDisclosureRule(json: payload["bonds_rule"])
+        if let definition = payload["presentation_definition"] as? [String: Any] {
+            let (definitionID, descriptors, requirements) = try parsePresentationDefinition(definition)
+            var request = OID4VPRequest(responseURI: responseURI,
+                                        clientID: clientID,
+                                        nonce: nonce,
+                                        state: state,
+                                        inputDescriptors: descriptors,
+                                        submissionRequirements: requirements,
+                                        definitionID: definitionID)
+            request.rule = rule
+            return request
+        }
+        if let query = payload["dcql_query"] as? [String: Any] {
+            var request = OID4VPRequest(responseURI: responseURI,
+                                        clientID: clientID,
+                                        nonce: nonce,
+                                        state: state,
+                                        inputDescriptors: try parseDCQL(query),
+                                        submissionRequirements: [],
+                                        definitionID: "")
+            request.queryLanguage = .dcql
+            request.rule = rule
+            return request
+        }
+        throw OID4VPRequestError.missingField("presentation_definition.id")
+    }
+
+    // MARK: - Presentation Exchange
+
+    private static func parsePresentationDefinition(_ definition: [String: Any]) throws
+        -> (id: String, descriptors: [OID4VPInputDescriptor], requirements: [OID4VPSubmissionRequirement]) {
+        guard let definitionID = definition["id"] as? String else {
             throw OID4VPRequestError.missingField("presentation_definition.id")
         }
-        let rawDescriptors = definition?["input_descriptors"] as? [[String: Any]] ?? []
+        let rawDescriptors = definition["input_descriptors"] as? [[String: Any]] ?? []
         guard !rawDescriptors.isEmpty else {
             throw OID4VPRequestError.missingField("input_descriptors[0].id")
         }
@@ -268,6 +334,8 @@ struct OID4VPRequest: Equatable {
             let credentialFormat: OID4VPCredentialFormat?
             if formats[OID4VPCredentialFormat.moica.rawValue] != nil {
                 credentialFormat = .moica
+            } else if formats[OID4VPCredentialFormat.sdJWTVC.rawValue] != nil {
+                credentialFormat = .sdJWTVC
             } else if formats[OID4VPCredentialFormat.sdJWT.rawValue] != nil {
                 credentialFormat = .sdJWT
             } else {
@@ -286,6 +354,13 @@ struct OID4VPRequest: Equatable {
                            let contains = filter["contains"] as? [String: Any],
                            let const = contains["const"] as? String {
                             credentialType = const
+                        }
+                    } else if path == "$.vct" {
+                        // An SD-JWT VC names its type in `vct`; the constraint
+                        // is a plain `const` (or the first of an `enum`).
+                        if let filter = field["filter"] as? [String: Any] {
+                            credentialType = filter["const"] as? String
+                                ?? (filter["enum"] as? [String])?.first
                         }
                     } else {
                         fields.append(OID4VPRequestedField(path: path))
@@ -310,7 +385,7 @@ struct OID4VPRequest: Equatable {
                 issuerName: issuerName))
         }
 
-        let rawRequirements = definition?["submission_requirements"] as? [[String: Any]] ?? []
+        let rawRequirements = definition["submission_requirements"] as? [[String: Any]] ?? []
         let requirements = rawRequirements.compactMap { raw -> OID4VPSubmissionRequirement? in
             guard let rule = raw["rule"] as? String,
                   let from = raw["from"] as? String,
@@ -322,13 +397,40 @@ struct OID4VPRequest: Equatable {
                                                 min: raw["min"] as? Int,
                                                 max: raw["max"] as? Int)
         }
+        return (definitionID, descriptors, requirements)
+    }
 
-        return OID4VPRequest(responseURI: responseURI,
-                             clientID: clientID,
-                             nonce: nonce,
-                             state: state,
-                             inputDescriptors: descriptors,
-                             submissionRequirements: requirements,
-                             definitionID: definitionID)
+    // MARK: - DCQL
+
+    /// OpenID4VP 1.0's query language, reduced to the same descriptor shape.
+    ///
+    /// `credentials[].id` becomes the descriptor id (and the key of the
+    /// `vp_token` object in the response), `meta.vct_values[0]` the required
+    /// type, and each `claims[].path` array a `$.`-joined field path so the
+    /// same `claimName` rule applies to both languages.
+    private static func parseDCQL(_ query: [String: Any]) throws -> [OID4VPInputDescriptor] {
+        let credentials = query["credentials"] as? [[String: Any]] ?? []
+        guard !credentials.isEmpty else { throw OID4VPRequestError.missingField("dcql_query.credentials") }
+        return try credentials.enumerated().map { index, credential in
+            guard let id = credential["id"] as? String, !id.isEmpty else {
+                throw OID4VPRequestError.missingField("dcql_query.credentials[\(index)].id")
+            }
+            let format = (credential["format"] as? String).flatMap(OID4VPCredentialFormat.init(rawValue:))
+            let meta = credential["meta"] as? [String: Any]
+            let vct = (meta?["vct_values"] as? [String])?.first
+            let claims = credential["claims"] as? [[String: Any]] ?? []
+            let fields = claims.compactMap { claim -> OID4VPRequestedField? in
+                guard let path = claim["path"] as? [Any], !path.isEmpty else { return nil }
+                let segments = path.map { String(describing: $0) }
+                return OID4VPRequestedField(path: "$." + segments.joined(separator: "."))
+            }
+            return OID4VPInputDescriptor(id: id,
+                                         credentialFormat: format,
+                                         credentialType: vct,
+                                         requestedFields: fields,
+                                         groups: [],
+                                         credentialName: nil,
+                                         issuerName: nil)
+        }
     }
 }
