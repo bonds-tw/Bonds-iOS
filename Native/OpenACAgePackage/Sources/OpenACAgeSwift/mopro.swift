@@ -1014,27 +1014,6 @@ public func createAgeShowInput(documentsPath: String, nonce: String, deviceSigna
     )
 }
 }
-public func createNamePrepareInput(documentsPath: String, sdJwt: String, issuerKeyX: String, issuerKeyY: String)throws  -> AgePrepareInput  {
-    return try  FfiConverterTypeAgePrepareInput_lift(try rustCallWithError(FfiConverterTypeZkProofError_lift) {
-    uniffi_openac_age_mobile_app_fn_func_create_name_prepare_input(
-        FfiConverterString.lower(documentsPath),
-        FfiConverterString.lower(sdJwt),
-        FfiConverterString.lower(issuerKeyX),
-        FfiConverterString.lower(issuerKeyY),$0
-    )
-})
-}
-public func createNameShowInput(documentsPath: String, nonce: String, deviceSignature: String, claimName: String, claimFormat: UInt8, targetName: String)throws   {try rustCallWithError(FfiConverterTypeZkProofError_lift) {
-    uniffi_openac_age_mobile_app_fn_func_create_name_show_input(
-        FfiConverterString.lower(documentsPath),
-        FfiConverterString.lower(nonce),
-        FfiConverterString.lower(deviceSignature),
-        FfiConverterString.lower(claimName),
-        FfiConverterUInt8.lower(claimFormat),
-        FfiConverterString.lower(targetName),$0
-    )
-}
-}
 /**
  * Generate shared blinding factors for both circuits
  * Creates random blinding factors that enable proof reblinding
@@ -1173,19 +1152,6 @@ public func verifyJwt(documentsPath: String)throws  -> Bool  {
     )
 })
 }
-public func verifyNamePresentation(documentsPath: String, nonce: String, claimName: String, claimFormat: UInt8, targetName: String, expectedIssuerKeyX: String, expectedIssuerKeyY: String)throws  -> Bool  {
-    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeZkProofError_lift) {
-    uniffi_openac_age_mobile_app_fn_func_verify_name_presentation(
-        FfiConverterString.lower(documentsPath),
-        FfiConverterString.lower(nonce),
-        FfiConverterString.lower(claimName),
-        FfiConverterUInt8.lower(claimFormat),
-        FfiConverterString.lower(targetName),
-        FfiConverterString.lower(expectedIssuerKeyX),
-        FfiConverterString.lower(expectedIssuerKeyY),$0
-    )
-})
-}
 /**
  * Verify a full presentation: both proofs verify AND commit to the same shared
  * witness (Item 12). This is the check a verifier must make — verifying the two
@@ -1231,12 +1197,6 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openac_age_mobile_app_checksum_func_create_age_show_input() != 4138) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openac_age_mobile_app_checksum_func_create_name_prepare_input() != 47306) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_openac_age_mobile_app_checksum_func_create_name_show_input() != 24791) {
-        return InitializationResult.apiChecksumMismatch
-    }
     if (uniffi_openac_age_mobile_app_checksum_func_generate_shared_blinds() != 22292) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -1271,9 +1231,6 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openac_age_mobile_app_checksum_func_verify_jwt() != 55203) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_openac_age_mobile_app_checksum_func_verify_name_presentation() != 10203) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openac_age_mobile_app_checksum_func_verify_presentation() != 52688) {

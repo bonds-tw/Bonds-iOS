@@ -48,9 +48,6 @@ const BIRTH_CLAIM_NAMES: &[&str] = &[
     "birth_date",
     "出生日期",
 ];
-const NAME_CLAIM_NAMES: &[&str] = &["name", "full_name", "姓名"];
-const UTF8_HASH_FORMAT: u8 = 5;
-const MAX_UTF8_TARGET_LENGTH: usize = 31;
 
 #[derive(Debug)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
@@ -61,7 +58,7 @@ pub struct AgePrepareInput {
 }
 
 #[derive(Debug)]
-struct ClaimDisclosure {
+struct BirthDisclosure {
     raw: String,
     name: String,
     digest: String,
@@ -165,7 +162,7 @@ fn padded_ascii(value: &str, width: usize) -> Result<Vec<String>, ZkProofError> 
 fn parse_birth_disclosure(
     serialized: &str,
     sd_digests: &[String],
-) -> Result<ClaimDisclosure, ZkProofError> {
+) -> Result<BirthDisclosure, ZkProofError> {
     let mut matches = Vec::new();
     for raw in serialized
         .split('~')
@@ -233,7 +230,7 @@ fn parse_birth_disclosure(
                 "birth disclosure digest is not in the signed _sd array",
             ));
         }
-        matches.push(ClaimDisclosure {
+        matches.push(BirthDisclosure {
             raw: raw.to_owned(),
             name: name.to_owned(),
             digest,
@@ -249,82 +246,6 @@ fn parse_birth_disclosure(
     }
 }
 
-fn parse_name_disclosure(
-    serialized: &str,
-    sd_digests: &[String],
-) -> Result<ClaimDisclosure, ZkProofError> {
-    let mut matches = Vec::new();
-    for raw in serialized
-        .split('~')
-        .skip(1)
-        .filter(|part| !part.is_empty() && !part.contains('.'))
-    {
-        let decoded = decode_url(raw, "disclosure")?;
-        let decoded_text =
-            std::str::from_utf8(&decoded).map_err(|_| invalid("disclosure is not UTF-8"))?;
-        if decoded_text.contains('\\') {
-            return Err(invalid(
-                "name disclosure contains a JSON escape unsupported by the circuit",
-            ));
-        }
-        let value: Value =
-            serde_json::from_slice(&decoded).map_err(|_| invalid("disclosure is not JSON"))?;
-        let array = value
-            .as_array()
-            .ok_or_else(|| invalid("disclosure is not an array"))?;
-        if array.len() != 3 {
-            continue;
-        }
-        let Some(salt) = array[0].as_str() else {
-            return Err(invalid("name disclosure salt is not a string"));
-        };
-        if decode_url(salt, "name disclosure salt")?.len() != 16 {
-            return Err(invalid(
-                "name disclosure salt is not the reviewed 128-bit profile",
-            ));
-        }
-        let Some(name) = array[1].as_str() else {
-            continue;
-        };
-        if !NAME_CLAIM_NAMES.contains(&name) {
-            continue;
-        }
-        let Some(claim_value) = array[2].as_str() else {
-            return Err(invalid("name disclosure is not a string"));
-        };
-        if claim_value.is_empty() || claim_value.as_bytes().len() > MAX_UTF8_TARGET_LENGTH {
-            return Err(invalid("name must contain 1 to 31 UTF-8 bytes"));
-        }
-        if name.as_bytes().len() > NAME_ID_LENGTH {
-            return Err(invalid("name field identifier is too long for the circuit"));
-        }
-        let digest = URL_SAFE_NO_PAD.encode(Sha256::digest(raw.as_bytes()));
-        if !sd_digests.iter().any(|item| item == &digest) {
-            return Err(invalid(
-                "name disclosure digest is not in the signed _sd array",
-            ));
-        }
-        matches.push(ClaimDisclosure {
-            raw: raw.to_owned(),
-            name: name.to_owned(),
-            digest,
-            format: UTF8_HASH_FORMAT,
-        });
-    }
-    match matches.len() {
-        0 => Err(invalid("credential has no supported full-name disclosure")),
-        1 => Ok(matches.remove(0)),
-        _ => Err(invalid(
-            "credential has more than one supported full-name disclosure",
-        )),
-    }
-}
-
-enum ClaimProfile {
-    Age,
-    Name,
-}
-
 /// Validate an ES256 SD-JWT and write the exact Prepare-circuit input file.
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 pub fn create_age_prepare_input(
@@ -332,38 +253,6 @@ pub fn create_age_prepare_input(
     sd_jwt: String,
     issuer_key_x: String,
     issuer_key_y: String,
-) -> Result<AgePrepareInput, ZkProofError> {
-    create_prepare_input(
-        documents_path,
-        sd_jwt,
-        issuer_key_x,
-        issuer_key_y,
-        ClaimProfile::Age,
-    )
-}
-
-#[cfg_attr(feature = "uniffi", uniffi::export)]
-pub fn create_name_prepare_input(
-    documents_path: String,
-    sd_jwt: String,
-    issuer_key_x: String,
-    issuer_key_y: String,
-) -> Result<AgePrepareInput, ZkProofError> {
-    create_prepare_input(
-        documents_path,
-        sd_jwt,
-        issuer_key_x,
-        issuer_key_y,
-        ClaimProfile::Name,
-    )
-}
-
-fn create_prepare_input(
-    documents_path: String,
-    sd_jwt: String,
-    issuer_key_x: String,
-    issuer_key_y: String,
-    profile: ClaimProfile,
 ) -> Result<AgePrepareInput, ZkProofError> {
     let jwt = sd_jwt
         .split('~')
@@ -436,10 +325,7 @@ fn create_prepare_input(
                 .ok_or_else(|| invalid("_sd digest is not text"))
         })
         .collect::<Result<_, _>>()?;
-    let claim = match profile {
-        ClaimProfile::Age => parse_birth_disclosure(&sd_jwt, &sd_digests)?,
-        ClaimProfile::Name => parse_name_disclosure(&sd_jwt, &sd_digests)?,
-    };
+    let birth = parse_birth_disclosure(&sd_jwt, &sd_digests)?;
 
     if payload.pointer("/cnf/jwk/kty").and_then(Value::as_str) != Some("EC")
         || payload.pointer("/cnf/jwk/crv").and_then(Value::as_str) != Some("P-256")
@@ -459,7 +345,7 @@ fn create_prepare_input(
     if occurrences(payload_text, x_anchor) != 1
         || occurrences(payload_text, y_anchor) != 1
         || occurrences(payload_text, "\"_sd\":[") != 1
-        || occurrences(payload_text, &claim.digest) != 1
+        || occurrences(payload_text, &birth.digest) != 1
     {
         return Err(invalid("signed payload has ambiguous OpenAC anchors"));
     }
@@ -491,16 +377,16 @@ fn create_prepare_input(
     let mut match_substrings = vec![
         padded_ascii(x_anchor, MAX_SUBSTRING_LENGTH)?,
         padded_ascii(y_anchor, MAX_SUBSTRING_LENGTH)?,
-        padded_ascii(&claim.digest, MAX_SUBSTRING_LENGTH)?,
+        padded_ascii(&birth.digest, MAX_SUBSTRING_LENGTH)?,
     ];
-    let mut match_lengths = vec![x_anchor.len(), y_anchor.len(), claim.digest.len()];
-    let mut match_indices = vec![x_index, y_index, payload_text.find(&claim.digest).unwrap()];
+    let mut match_lengths = vec![x_anchor.len(), y_anchor.len(), birth.digest.len()];
+    let mut match_indices = vec![x_index, y_index, payload_text.find(&birth.digest).unwrap()];
     while match_substrings.len() < MAX_MATCHES {
         match_substrings.push(padded_ascii("", MAX_SUBSTRING_LENGTH)?);
         match_lengths.push(0);
         match_indices.push(0);
     }
-    let (claim_padded, _) = padded_bytes(claim.raw.as_bytes(), MAX_CLAIM_LENGTH)?;
+    let (claim_padded, _) = padded_bytes(birth.raw.as_bytes(), MAX_CLAIM_LENGTH)?;
     let mut claims = vec![
         json_strings(claim_padded),
         vec!["0".to_owned(); MAX_CLAIM_LENGTH],
@@ -519,9 +405,9 @@ fn create_prepare_input(
         "matchLength": match_lengths,
         "matchIndex": match_indices,
         "claims": claims,
-        "claimLengths": [claim.raw.len().to_string(), "0".to_owned()],
+        "claimLengths": [birth.raw.len().to_string(), "0".to_owned()],
         "decodeFlags": [1, 0],
-        "claimFormats": [claim.format.to_string(), "1".to_owned()],
+        "claimFormats": [birth.format.to_string(), "1".to_owned()],
     });
     fs::create_dir_all(&documents_path).map_err(|e| io_error(e.to_string()))?;
     fs::write(
@@ -530,8 +416,8 @@ fn create_prepare_input(
     )
     .map_err(|e| io_error(e.to_string()))?;
     Ok(AgePrepareInput {
-        claim_name: claim.name,
-        claim_format: claim.format,
+        claim_name: birth.name,
+        claim_format: birth.format,
     })
 }
 
@@ -555,58 +441,6 @@ pub fn create_age_show_input(
     }
     if ![2, 3].contains(&claim_format) {
         return Err(invalid("age claim format must be ISO or ROC date"));
-    }
-    create_show_input(
-        documents_path,
-        nonce,
-        device_signature,
-        claim_name,
-        0,
-        cutoff.to_string(),
-        None,
-    )
-}
-
-#[cfg_attr(feature = "uniffi", uniffi::export)]
-pub fn create_name_show_input(
-    documents_path: String,
-    nonce: String,
-    device_signature: String,
-    claim_name: String,
-    claim_format: u8,
-    target_name: String,
-) -> Result<(), ZkProofError> {
-    if claim_name.as_bytes().len() > NAME_ID_LENGTH
-        || !NAME_CLAIM_NAMES.contains(&claim_name.as_str())
-        || claim_format != UTF8_HASH_FORMAT
-    {
-        return Err(invalid("claim is not a supported full-name field"));
-    }
-    if target_name.is_empty() || target_name.as_bytes().len() > MAX_UTF8_TARGET_LENGTH {
-        return Err(invalid("target name must contain 1 to 31 UTF-8 bytes"));
-    }
-    create_show_input(
-        documents_path,
-        nonce,
-        device_signature,
-        claim_name,
-        2,
-        "0".to_owned(),
-        Some(target_name),
-    )
-}
-
-fn create_show_input(
-    documents_path: String,
-    nonce: String,
-    device_signature: String,
-    claim_name: String,
-    predicate_op: u8,
-    rhs_value: String,
-    rhs_text: Option<String>,
-) -> Result<(), ZkProofError> {
-    if nonce.as_bytes().len() < 16 {
-        return Err(invalid("verifier nonce is too short"));
     }
     let config = make_config(&documents_path);
     let witness = load_witness(config.artifact_path(PREPARE_WITNESS))
@@ -646,15 +480,6 @@ fn create_show_input(
     for (index, byte) in claim_name.as_bytes().iter().enumerate() {
         lhs_name[0][index] = byte.to_string();
     }
-    let mut rhs_name = vec![vec!["0".to_owned(); NAME_ID_LENGTH]; 2];
-    let rhs_name_len = if let Some(target) = rhs_text.as_ref() {
-        for (index, byte) in target.as_bytes().iter().enumerate() {
-            rhs_name[0][index] = byte.to_string();
-        }
-        target.as_bytes().len()
-    } else {
-        0
-    };
     let input = json!({
         "deviceKeyX": scalar_decimal(&device_x_scalar),
         "deviceKeyY": scalar_decimal(&device_y_scalar),
@@ -665,13 +490,13 @@ fn create_show_input(
         "claimValues": claim_values,
         "claimIdentifierHashes": identifiers,
         "predicateClaimRefs": ["0", "0"],
-        "predicateOps": [predicate_op.to_string(), "2".to_owned()],
+        "predicateOps": ["0", "2"],
         "predicateRhsIsRef": ["0", "0"],
-        "predicateRhsValues": [rhs_value, "0".to_owned()],
+        "predicateRhsValues": [cutoff.to_string(), "0".to_owned()],
         "predicateClaimNames": lhs_name,
         "predicateClaimNameLens": [claim_name.as_bytes().len().to_string(), "0".to_owned()],
-        "predicateRhsClaimNames": rhs_name,
-        "predicateRhsClaimNameLens": [rhs_name_len.to_string(), "0".to_owned()],
+        "predicateRhsClaimNames": [vec!["0".to_owned(); NAME_ID_LENGTH], vec!["0".to_owned(); NAME_ID_LENGTH]],
+        "predicateRhsClaimNameLens": ["0", "0"],
         "tokenTypes": ["0", "0", "0", "0", "0", "0", "0", "0"],
         "tokenValues": ["0", "0", "0", "0", "0", "0", "0", "0"],
         "exprLen": "1",
@@ -687,9 +512,7 @@ fn create_show_input(
 fn expected_show_values(
     nonce: &str,
     claim_name: &str,
-    predicate_op: u8,
-    rhs_value: String,
-    rhs_text: Option<&str>,
+    cutoff: u64,
 ) -> Result<Vec<Scalar>, ZkProofError> {
     let mut decimal = Vec::<String>::new();
     decimal.push("1".to_owned());
@@ -698,38 +521,19 @@ fn expected_show_values(
     );
     decimal.push("1".to_owned());
     decimal.extend(
-        [
-            "0".to_owned(),
-            "0".to_owned(),
-            predicate_op.to_string(),
-            "2".to_owned(),
-            "0".to_owned(),
-            "0".to_owned(),
-        ]
-        .into_iter(),
+        ["0", "0", "0", "2", "0", "0"]
+            .into_iter()
+            .map(str::to_owned),
     );
-    decimal.extend([rhs_value, "0".to_owned()]);
+    decimal.extend([cutoff.to_string(), "0".to_owned()]);
     decimal.extend(claim_name.as_bytes().iter().map(u8::to_string));
     decimal.extend(
         std::iter::repeat("0".to_owned()).take(NAME_ID_LENGTH - claim_name.as_bytes().len()),
     );
     decimal.extend(std::iter::repeat("0".to_owned()).take(NAME_ID_LENGTH));
     decimal.extend([claim_name.as_bytes().len().to_string(), "0".to_owned()]);
-    if let Some(target) = rhs_text {
-        decimal.extend(target.as_bytes().iter().map(u8::to_string));
-        decimal.extend(
-            std::iter::repeat("0".to_owned()).take(NAME_ID_LENGTH - target.as_bytes().len()),
-        );
-    } else {
-        decimal.extend(std::iter::repeat("0".to_owned()).take(NAME_ID_LENGTH));
-    }
-    decimal.extend(std::iter::repeat("0".to_owned()).take(NAME_ID_LENGTH));
-    decimal.extend([
-        rhs_text
-            .map_or(0, |value| value.as_bytes().len())
-            .to_string(),
-        "0".to_owned(),
-    ]);
+    decimal.extend(std::iter::repeat("0".to_owned()).take(NAME_ID_LENGTH * 2));
+    decimal.extend(["0", "0"].into_iter().map(str::to_owned));
     decimal.extend(std::iter::repeat("0".to_owned()).take(8));
     decimal.extend(std::iter::repeat("0".to_owned()).take(8));
     decimal.push("1".to_owned());
@@ -755,62 +559,6 @@ pub fn verify_age_presentation(
     {
         return Err(invalid("invalid expected age statement"));
     }
-    verify_predicate_presentation(
-        documents_path,
-        nonce,
-        claim_name,
-        claim_format,
-        0,
-        cutoff.to_string(),
-        None,
-        expected_issuer_key_x,
-        expected_issuer_key_y,
-    )
-}
-
-#[cfg_attr(feature = "uniffi", uniffi::export)]
-pub fn verify_name_presentation(
-    documents_path: String,
-    nonce: String,
-    claim_name: String,
-    claim_format: u8,
-    target_name: String,
-    expected_issuer_key_x: String,
-    expected_issuer_key_y: String,
-) -> Result<bool, ZkProofError> {
-    if nonce.as_bytes().len() < 16
-        || claim_name.as_bytes().len() > NAME_ID_LENGTH
-        || !NAME_CLAIM_NAMES.contains(&claim_name.as_str())
-        || claim_format != UTF8_HASH_FORMAT
-        || target_name.is_empty()
-        || target_name.as_bytes().len() > MAX_UTF8_TARGET_LENGTH
-    {
-        return Err(invalid("invalid expected full-name statement"));
-    }
-    verify_predicate_presentation(
-        documents_path,
-        nonce,
-        claim_name,
-        claim_format,
-        2,
-        "0".to_owned(),
-        Some(target_name),
-        expected_issuer_key_x,
-        expected_issuer_key_y,
-    )
-}
-
-fn verify_predicate_presentation(
-    documents_path: String,
-    nonce: String,
-    claim_name: String,
-    claim_format: u8,
-    predicate_op: u8,
-    rhs_value: String,
-    rhs_text: Option<String>,
-    expected_issuer_key_x: String,
-    expected_issuer_key_y: String,
-) -> Result<bool, ZkProofError> {
     let config = make_config(&documents_path);
     let prepare_proof =
         load_proof(config.artifact_path(PREPARE_PROOF)).map_err(|e| invalid(e.to_string()))?;
@@ -844,14 +592,7 @@ fn verify_predicate_presentation(
     if prepare_public != expected_prepare {
         return Ok(false);
     }
-    Ok(show_public
-        == expected_show_values(
-            &nonce,
-            &claim_name,
-            predicate_op,
-            rhs_value,
-            rhs_text.as_deref(),
-        )?)
+    Ok(show_public == expected_show_values(&nonce, &claim_name, cutoff)?)
 }
 
 #[cfg(test)]
@@ -860,27 +601,7 @@ mod tests {
 
     #[test]
     fn expected_age_statement_has_the_compiled_public_width() {
-        let values = expected_show_values(
-            "0123456789abcdef",
-            "roc_birthday",
-            0,
-            "970901".to_owned(),
-            None,
-        )
-        .unwrap();
-        assert_eq!(values.len(), 156);
-    }
-
-    #[test]
-    fn expected_utf8_name_statement_has_the_compiled_public_width() {
-        let values = expected_show_values(
-            "0123456789abcdef",
-            "name",
-            2,
-            "0".to_owned(),
-            Some("黃彥霖"),
-        )
-        .unwrap();
+        let values = expected_show_values("0123456789abcdef", "roc_birthday", 970901).unwrap();
         assert_eq!(values.len(), 156);
     }
 
@@ -919,13 +640,5 @@ mod tests {
         let digest = URL_SAFE_NO_PAD.encode(Sha256::digest(raw.as_bytes()));
         let credential = format!("x~{raw}~");
         assert!(parse_birth_disclosure(&credential, &[digest]).is_err());
-    }
-
-    #[test]
-    fn name_disclosure_requires_the_reviewed_128_bit_salt_shape() {
-        let raw = URL_SAFE_NO_PAD.encode(r#"["c2hvcnQ","name","黃彥霖"]"#.as_bytes());
-        let digest = URL_SAFE_NO_PAD.encode(Sha256::digest(raw.as_bytes()));
-        let credential = format!("x~{raw}~");
-        assert!(parse_name_disclosure(&credential, &[digest]).is_err());
     }
 }

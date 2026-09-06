@@ -8,16 +8,47 @@ import Foundation
 import Testing
 @testable import backupTW
 
-struct AgePredicateRequestQRLayoutTests {
-    @Test func requestCodeFitsRegularAndFloatingIPadWidths() {
-        #expect(AgePredicateRequestQRLayout.pointWidth(forViewWidth: 834) == 260)
-        #expect(AgePredicateRequestQRLayout.pointWidth(forViewWidth: 360) == 260)
-        #expect(AgePredicateRequestQRLayout.pointWidth(forViewWidth: 280) == 240)
+struct OnlineAgeProofRequestTests {
+    private let now = Date(timeIntervalSince1970: 1_788_000_000)
+    private let endpoint = URL(string: "https://verifier.mashbean.net/api/zkp/response/test")!
+
+    @Test func onlineAgeRequestKeepsTheChosenThresholdAndDestination() throws {
+        let request = try AgePredicateProofRequest(
+            purpose: "Age check", credentialSource: .selfIssued, minimumAge: 21,
+            responseURL: endpoint, now: now)
+        let decoded = try AgePredicateProofRequest.decodeOnlineAge(
+            from: request.encodedForTransport(), now: now)
+        #expect(decoded.minimumAge == 21)
+        #expect(try decoded.onlineAgeResponseURL(now: now) == endpoint)
     }
 
-    @Test func requestCodeRefusesAnUnavailableOrInvalidWidth() {
-        #expect(AgePredicateRequestQRLayout.pointWidth(forViewWidth: 40) == nil)
-        #expect(AgePredicateRequestQRLayout.pointWidth(forViewWidth: .infinity) == nil)
+    @Test func legacyNameAndDisclosureRequestsCannotStartTheProductFlow() throws {
+        let requests = [
+            try AgePredicateProofRequest(purpose: "Legacy", credentialSource: .selfIssued, now: now),
+            try AgePredicateProofRequest(purpose: "Legacy", credentialSource: .selfIssued,
+                                         discloseBirthdate: true, now: now),
+            try AgePredicateProofRequest(purpose: "Legacy", credentialSource: .twdiw,
+                                         targetName: "王小明", now: now),
+            try AgePredicateProofRequest(purpose: "Legacy", credentialSource: .selfIssued,
+                                         targetName: "王小明", discloseName: true, now: now)
+        ]
+        for request in requests {
+            #expect(throws: AgePredicateProofError.onlineAgeRequestRequired) {
+                try AgePredicateProofRequest.decodeOnlineAge(from: request.encodedForTransport(), now: now)
+            }
+            #expect(throws: AgePredicateProofError.onlineAgeRequestRequired) {
+                try request.onlineAgeResponseURL(now: now)
+            }
+        }
+    }
+
+    @Test func typedRequestIsRecheckedAfterProofCreation() throws {
+        let request = try AgePredicateProofRequest(
+            purpose: "Age check", credentialSource: .selfIssued,
+            responseURL: endpoint, now: now)
+        #expect(throws: AgePredicateProofError.staleRequest) {
+            try request.onlineAgeResponseURL(now: now.addingTimeInterval(AgePredicateProofRequest.lifetime + 1))
+        }
     }
 }
 

@@ -11,8 +11,8 @@ let package = Package(
     targets: [
         .binaryTarget(
             name: "openac_age_mobile_appFFI",
-            url: "https://github.com/bonds-tw/backupTW-iOS/releases/download/openac-field-v2/OpenACFieldBindings.xcframework.zip",
-            checksum: "7bd13bc83621d87e7a5f866518f3513f5fe5ed2fe03e4c46e6f9e9f51bff4776"),
+            url: "https://github.com/bonds-tw/backupTW-iOS/releases/download/openac-age-v1/OpenACAgeBindings.xcframework.zip",
+            checksum: "9eb080736b4aa73211a8ba1bdc057955edda8d430a0ac9e088e5aa31c4ac76f4"),
         .target(
             name: "OpenACAgeSwift",
             dependencies: ["openac_age_mobile_appFFI", "COpenACAgeFFI"],

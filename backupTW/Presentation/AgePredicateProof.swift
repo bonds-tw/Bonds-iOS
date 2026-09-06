@@ -36,6 +36,7 @@ enum AgePredicateProofError: Error, Equatable, LocalizedError {
     /// The checker's website read the proof and refused it.
     case webRejected(String)
     case network
+    case onlineAgeRequestRequired
 
     var errorDescription: String? {
         switch self {
@@ -74,6 +75,8 @@ enum AgePredicateProofError: Error, Equatable, LocalizedError {
         case .webRejected(let reason):
             return String(format: NSLocalizedString("The checker's website did not accept the proof: %@", comment: "age proof"),
                           reason)
+        case .onlineAgeRequestRequired:
+            return NSLocalizedString("Scan an online age-check request from the verifier website. Name checks and offline proof requests are no longer supported.", comment: "online age proof")
         case .network:
             return NSLocalizedString("The proof could not be sent to the checker's website. Check the connection and try again.", comment: "age proof")
         }
@@ -247,6 +250,24 @@ struct AgePredicateProofRequest: Codable, Equatable, Sendable {
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         encoder.dateEncodingStrategy = .secondsSince1970
         return String(decoding: try encoder.encode(self), as: UTF8.self)
+    }
+
+    /// Product entry point. Legacy formats remain decodable for recorded test
+    /// evidence, but cannot start proving or disclosure in the app.
+    static func decodeOnlineAge(from text: String, now: Date = Date()) throws -> AgePredicateProofRequest {
+        let request = try decode(from: text, now: now)
+        _ = try request.onlineAgeResponseURL(now: now)
+        return request
+    }
+
+    func onlineAgeResponseURL(now: Date = Date()) throws -> URL {
+        guard version == Self.currentVersion, !checksName, !usesSDJWT,
+              let responseURL else {
+            throw AgePredicateProofError.onlineAgeRequestRequired
+        }
+        // Revalidate typed requests too, including expiry and the destination.
+        _ = try Self.decode(from: encodedForTransport(), now: now)
+        return responseURL
     }
 
     static func decode(from text: String, now: Date = Date()) throws -> AgePredicateProofRequest {
@@ -562,11 +583,12 @@ actor OpenACAgePredicateProofEngine: AgePredicateProofEngine {
                holder: DeviceKey,
                cacheKey: String,
                assetProgress: @escaping @Sendable (Double) -> Void) async throws -> AgePredicateProofPackage {
+        _ = try request.onlineAgeResponseURL()
+        let cacheKey = cacheKey + ".openac-age-v1"
         guard let assets else { throw AgePredicateProofError.nativeEngineUnavailable }
-        let installed = try await assets.prepare(.prover, allowDownloads: request.responseURL != nil,
+        let installed = try await assets.prepare(.prover, allowDownloads: true,
                                                   progress: assetProgress)
         let issuer = try Self.coordinates(issuerPublicKeyX963)
-        let cacheKey = cacheKey + (request.checksName ? ".utf8-name-v1" : ".age-v1")
         // Signed once; the same nonce is answered on a retry, so the same
         // signature applies.
         let holderSignature = try holder.signature(for: Data(request.nonce.utf8))
@@ -633,20 +655,11 @@ actor OpenACAgePredicateProofEngine: AgePredicateProofEngine {
                 prepareMilliseconds = Self.milliseconds(restoreStarted.duration(to: clock.now))
             } else {
                 let prepareStarted = clock.now
-                let prepared: AgePrepareInput
-                if request.checksName {
-                    prepared = try createNamePrepareInput(
-                        documentsPath: path,
-                        sdJwt: credential,
-                        issuerKeyX: issuerX,
-                        issuerKeyY: issuerY)
-                } else {
-                    prepared = try createAgePrepareInput(
-                        documentsPath: path,
-                        sdJwt: credential,
-                        issuerKeyX: issuerX,
-                        issuerKeyY: issuerY)
-                }
+                let prepared = try createAgePrepareInput(
+                    documentsPath: path,
+                    sdJwt: credential,
+                    issuerKeyX: issuerX,
+                    issuerKeyY: issuerY)
                 _ = try proveJwt(documentsPath: path)
                 claimName = prepared.claimName
                 claimFormat = prepared.claimFormat
@@ -663,27 +676,16 @@ actor OpenACAgePredicateProofEngine: AgePredicateProofEngine {
                 }
             }
 
+            let cutoff = try request.cutoffValue(claimFormat: claimFormat)
+
             let showStarted = clock.now
-            if request.checksName {
-                guard let targetName = request.targetName else {
-                    throw AgePredicateProofError.statementMismatch
-                }
-                try createNameShowInput(
-                    documentsPath: path,
-                    nonce: request.nonce,
-                    deviceSignature: holderSignature.base64URLEncodedString(),
-                    claimName: claimName,
-                    claimFormat: claimFormat,
-                    targetName: targetName)
-            } else {
-                try createAgeShowInput(
-                    documentsPath: path,
-                    nonce: request.nonce,
-                    deviceSignature: holderSignature.base64URLEncodedString(),
-                    claimName: claimName,
-                    claimFormat: claimFormat,
-                    cutoff: try request.cutoffValue(claimFormat: claimFormat))
-            }
+            try createAgeShowInput(
+                documentsPath: path,
+                nonce: request.nonce,
+                deviceSignature: holderSignature.base64URLEncodedString(),
+                claimName: claimName,
+                claimFormat: claimFormat,
+                cutoff: cutoff)
             _ = try proveShow(documentsPath: path)
             var showMilliseconds = Self.milliseconds(showStarted.duration(to: clock.now))
 
@@ -698,29 +700,14 @@ actor OpenACAgePredicateProofEngine: AgePredicateProofEngine {
             // A holder never sends a proof it cannot itself check against the
             // exact issuer key and verifier statement. This is also the backstop
             // for a stale cached base: a proof built on one fails here.
-            let accepted: Bool
-            if request.checksName {
-                guard let targetName = request.targetName else {
-                    throw AgePredicateProofError.statementMismatch
-                }
-                accepted = try verifyNamePresentation(
-                    documentsPath: path,
-                    nonce: request.nonce,
-                    claimName: claimName,
-                    claimFormat: claimFormat,
-                    targetName: targetName,
-                    expectedIssuerKeyX: issuerX,
-                    expectedIssuerKeyY: issuerY)
-            } else {
-                accepted = try verifyAgePresentation(
-                    documentsPath: path,
-                    nonce: request.nonce,
-                    claimName: claimName,
-                    claimFormat: claimFormat,
-                    cutoff: try request.cutoffValue(claimFormat: claimFormat),
-                    expectedIssuerKeyX: issuerX,
-                    expectedIssuerKeyY: issuerY)
-            }
+            let accepted = try verifyAgePresentation(
+                documentsPath: path,
+                nonce: request.nonce,
+                claimName: claimName,
+                claimFormat: claimFormat,
+                cutoff: cutoff,
+                expectedIssuerKeyX: issuerX,
+                expectedIssuerKeyY: issuerY)
             guard accepted else { throw AgePredicateProofError.proofRejected }
 
             let prepareProof = try Data(
@@ -750,9 +737,10 @@ actor OpenACAgePredicateProofEngine: AgePredicateProofEngine {
                 request: AgePredicateProofRequest,
                 expectedIssuerPublicKeyX963: Data,
                 assetProgress: @escaping @Sendable (Double) -> Void) async throws -> AgePredicateProofTiming {
+        _ = try request.onlineAgeResponseURL()
         try package.validate(answering: request)
         guard let assets else { throw AgePredicateProofError.nativeEngineUnavailable }
-        let installed = try await assets.prepare(.verifier, allowDownloads: false, progress: assetProgress)
+        let installed = try await assets.prepare(.verifier, allowDownloads: true, progress: assetProgress)
         let scratch = try makeScratch(installedCircom: installed, role: .verifier)
         defer { try? fileManager.removeItem(at: scratch.root) }
         let keyDirectory = scratch.documents.appendingPathComponent("keys", isDirectory: true)
@@ -765,29 +753,14 @@ actor OpenACAgePredicateProofEngine: AgePredicateProofEngine {
         do {
             let clock = ContinuousClock()
             let started = clock.now
-            let accepted: Bool
-            if request.checksName {
-                guard let targetName = request.targetName else {
-                    throw AgePredicateProofError.statementMismatch
-                }
-                accepted = try verifyNamePresentation(
-                    documentsPath: scratch.documents.path,
-                    nonce: request.nonce,
-                    claimName: package.claimName,
-                    claimFormat: package.claimFormat,
-                    targetName: targetName,
-                    expectedIssuerKeyX: issuer.x,
-                    expectedIssuerKeyY: issuer.y)
-            } else {
-                accepted = try verifyAgePresentation(
-                    documentsPath: scratch.documents.path,
-                    nonce: request.nonce,
-                    claimName: package.claimName,
-                    claimFormat: package.claimFormat,
-                    cutoff: try request.cutoffValue(claimFormat: package.claimFormat),
-                    expectedIssuerKeyX: issuer.x,
-                    expectedIssuerKeyY: issuer.y)
-            }
+            let accepted = try verifyAgePresentation(
+                documentsPath: scratch.documents.path,
+                nonce: request.nonce,
+                claimName: package.claimName,
+                claimFormat: package.claimFormat,
+                cutoff: try request.cutoffValue(claimFormat: package.claimFormat),
+                expectedIssuerKeyX: issuer.x,
+                expectedIssuerKeyY: issuer.y)
             let milliseconds = Self.milliseconds(started.duration(to: clock.now))
             guard accepted else { throw AgePredicateProofError.proofRejected }
             return AgePredicateProofTiming(

@@ -2,7 +2,7 @@
 //  AgePredicateCircuitAssets.swift
 //  backupTW
 //
-//  Immutable runtime files for the OpenAC field-predicate profile. Downloads use
+//  Immutable runtime files for the OpenAC age-predicate profile. Downloads use
 //  the app's existing resumable, pinned CircuitAssets implementation; this file
 //  only defines the independently reviewable manifest and holder/checker split.
 //
@@ -15,7 +15,7 @@ enum AgePredicateAssetRole: Sendable {
 }
 
 enum AgePredicateCircuitAssetCatalog {
-    static let releaseTag = "openac-field-v2"
+    static let releaseTag = "openac-age-v1"
 
     private static let release = URL(
         string: "https://github.com/bonds-tw/backupTW-iOS/releases/download/\(releaseTag)")!
@@ -44,55 +44,55 @@ enum AgePredicateCircuitAssetCatalog {
         name: "openac_age_jwt_r1cs",
         remoteFilename: "jwt_2k.r1cs.gz",
         localFilename: "circom/build/jwt/jwt_js/jwt.r1cs",
-        compressedByteCount: 28_373_678,
-        installedByteCount: 374_893_516,
-        compressedSHA256: "e60d73921d1935789a6d237949be72500cda0b3b39e196ae87016be26e68de3b",
-        installedSHA256: "1ef44eb4889b19c71f6cec0f9cf91da04588346b2a262fb67739ff2ab691f0ad")
+        compressedByteCount: 28_202_219,
+        installedByteCount: 374_342_852,
+        compressedSHA256: "efb45ed790e81fb6e1e3947f3749ee6ee1b3f03c069fff0227bd7ccb94d974a6",
+        installedSHA256: "d4f8b34dfd454234872a34f47ea486545cb4d989c41ed75f856268718251dc6a")
 
     static let showR1CS = asset(
         name: "openac_age_show_r1cs",
         remoteFilename: "show.r1cs.gz",
         localFilename: "circom/build/show/show_js/show.r1cs",
-        compressedByteCount: 590_996,
-        installedByteCount: 4_025_780,
-        compressedSHA256: "0e537a97c34eea829fc945f5287853eaf576fc1963c51c607209f71eef1e010c",
-        installedSHA256: "683162facd8636e062835cad414775fe2569f4e946493d1d55bfa56589858fba")
+        compressedByteCount: 590_365,
+        installedByteCount: 4_017_428,
+        compressedSHA256: "20d785277560fa96309832926bd7efc927e3976c0385b3e2bcae455ad4ad8c7d",
+        installedSHA256: "3809e70502fa90f2038760da5f1399a1e3eb17923e5af872edf3dfa0b7d37a9a")
 
     static let prepareProvingKey = asset(
         name: "openac_age_prepare_proving",
         remoteFilename: "prepare_proving.key.gz",
         localFilename: "circom/keys/prepare_proving.key",
-        compressedByteCount: 23_772_560,
-        installedByteCount: 432_432_554,
-        compressedSHA256: "6518606f1f6ae38bfbda1a19727748902c2c0b51aa545adef251a129701fb3df",
-        installedSHA256: "167eb76c59505bd50b8a061bc5005960011e0877a4f663d6ddd395c0502119f4")
+        compressedByteCount: 23_609_142,
+        installedByteCount: 431_866_474,
+        compressedSHA256: "3b45f8b1c24e5e82fc2462ed819a73fab0167dcce303e15e272fc6f99e44a277",
+        installedSHA256: "853657d2e701215a65c5d97ab3cf5640e9aa8379ac6d106b7c82dc9b9d078e79")
 
     static let prepareVerifyingKey = asset(
         name: "openac_age_prepare_verifying",
         remoteFilename: "prepare_verifying.key.gz",
         localFilename: "circom/keys/prepare_verifying.key",
-        compressedByteCount: 23_772_504,
-        installedByteCount: 432_432_522,
-        compressedSHA256: "8fe4867ea95094b06c484862f3af8b0271f41088482bf495ae76b76c7da8fbe5",
-        installedSHA256: "81f29f3a11e45a2e1b728c290f8af87ac8c8548fd049ac176897a583d83f5347")
+        compressedByteCount: 23_609_093,
+        installedByteCount: 431_866_442,
+        compressedSHA256: "d84ef20b28f0dd26b836022fc023424592d476a80b54d9ab80d51e43f698ee6a",
+        installedSHA256: "9b45cc7462a236b1056d21c19e1e4dfc2cf52fd20538d43fbe072d9ed106e9d6")
 
     static let showProvingKey = asset(
         name: "openac_age_show_proving",
         remoteFilename: "show_proving.key.gz",
         localFilename: "circom/keys/show_proving.key",
-        compressedByteCount: 576_612,
-        installedByteCount: 4_871_018,
-        compressedSHA256: "cf74a3e8f58be86d0e6faf68786e5b28952d4548485e394843b8e0340039d32d",
-        installedSHA256: "8008c16e150736e595e0a3f9ebe31e57a56c7603e3348efa09618f696e275c61")
+        compressedByteCount: 575_666,
+        installedByteCount: 4_862_778,
+        compressedSHA256: "fa34e2cefe8da70476843f0a7037e249c7b1cf13c5c26a3f09a268393de61223",
+        installedSHA256: "809f24ca6ee003b684e2282b77f5a47279528edee7654a3801770a2ffca67831")
 
     static let showVerifyingKey = asset(
         name: "openac_age_show_verifying",
         remoteFilename: "show_verifying.key.gz",
         localFilename: "circom/keys/show_verifying.key",
-        compressedByteCount: 576_575,
-        installedByteCount: 4_870_986,
-        compressedSHA256: "ae9df7e79ae7cabd8c87cfc7b27d39117618a6aeec459d1bb5c985f4bc0ff988",
-        installedSHA256: "f112a4953b4af7f1aca5c561671cff6f11860b0d727b47418f30ed45f0e10258")
+        compressedByteCount: 575_630,
+        installedByteCount: 4_862_746,
+        compressedSHA256: "b6daa9cefd23d27ce80bd182ced987caa1a4eeb91083fc6ceafbeb1210dfbad0",
+        installedSHA256: "f0c447a9757d182e8aa23083bc3dba5a9a22f3e0fcbb344724568cc3c83352d8")
 
     /// A phone producing a proof needs the two constraints and both key pairs.
     /// Keeping the verifying keys here also lets it fail closed by checking its
@@ -118,7 +118,7 @@ enum AgePredicateCircuitAssetCatalog {
             in: .userDomainMask,
             appropriateFor: nil,
             create: true)
-        return base.appendingPathComponent("OpenACField-v2", isDirectory: true)
+        return base.appendingPathComponent("OpenACAge-v1", isDirectory: true)
     }
 }
 

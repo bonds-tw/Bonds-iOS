@@ -4,8 +4,6 @@ import UIKit
 final class OfflinePreparationViewController: UIViewController {
     private let status = UILabel()
     private let trustButton = UIButton(type: .system)
-    private let holderButton = UIButton(type: .system)
-    private let verifierButton = UIButton(type: .system)
     private var task: Task<Void, Never>?
     private var operationID: UUID?
 
@@ -14,16 +12,14 @@ final class OfflinePreparationViewController: UIViewController {
         title = NSLocalizedString("Prepare offline checking", comment: "offline preparation")
         view.backgroundColor = .systemGroupedBackground
         let explanation = UILabel()
-        explanation.text = NSLocalizedString("While connected, save issuer trust on both devices. Prepare proof files on the iPhone and checking files on the iPad. Then enable Airplane Mode, turn Wi-Fi off in Settings, and turn Bluetooth back on. The iPad does not need a copy of your cards.", comment: "offline preparation")
+        explanation.text = NSLocalizedString("Before disconnecting, save issuer trust data on the checking device. Offline document checks use QR codes and Bluetooth. The checker does not need a copy of your cards. Current revocation status cannot be checked while offline.", comment: "offline preparation")
         for label in [explanation, status] {
             label.numberOfLines = 0
             label.font = .preferredFont(forTextStyle: .body)
             label.adjustsFontForContentSizeCategory = true
         }
         configure(trustButton, "Save issuer trust", #selector(prepareTrust))
-        configure(holderButton, "Prepare proof files on this iPhone", #selector(prepareHolder))
-        configure(verifierButton, "Prepare checking files on this iPad", #selector(prepareVerifier))
-        let stack = UIStackView(arrangedSubviews: [explanation, trustButton, holderButton, verifierButton, status])
+        let stack = UIStackView(arrangedSubviews: [explanation, trustButton, status])
         stack.axis = .vertical
         stack.spacing = 20
         let scroll = UIScrollView()
@@ -68,13 +64,13 @@ final class OfflinePreparationViewController: UIViewController {
         task?.cancel()
         let id = UUID()
         operationID = id
-        for button in [trustButton, holderButton, verifierButton] { button.isEnabled = false }
+        for button in [trustButton] { button.isEnabled = false }
         status.text = NSLocalizedString("Preparing… Keep this screen open.", comment: "offline preparation")
         task = Task { @MainActor [weak self] in
             guard let self else { return }
             defer {
                 if operationID == id { operationID = nil }
-                for button in [trustButton, holderButton, verifierButton] { button.isEnabled = true }
+                for button in [trustButton] { button.isEnabled = true }
             }
             do {
                 let message = try await operation()
@@ -102,20 +98,4 @@ final class OfflinePreparationViewController: UIViewController {
         }
     }
 
-    @objc private func prepareHolder() { prepare(.prover) }
-    @objc private func prepareVerifier() { prepare(.verifier) }
-
-    private func prepare(_ role: AgePredicateAssetRole) {
-        run { [self] in
-            let id = operationID
-            let preparer = try AgePredicateCircuitAssetPreparer()
-            _ = try await preparer.prepare(role) { [self] fraction in
-                Task { @MainActor [self] in
-                    guard operationID == id else { return }
-                    status.text = String(format: NSLocalizedString("Preparing files… %d%%", comment: "offline preparation"), Int((fraction * 100).rounded()))
-                }
-            }
-            return NSLocalizedString("Files are downloaded and their checksums match. You can now disconnect and start a check.", comment: "offline preparation")
-        }
-    }
 }

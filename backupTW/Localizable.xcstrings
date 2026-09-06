@@ -883,6 +883,16 @@
         }
       }
     },
+    "Before disconnecting, save issuer trust data on the checking device. Offline document checks use QR codes and Bluetooth. The checker does not need a copy of your cards. Current revocation status cannot be checked while offline.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "斷網前，先在查驗裝置儲存發卡者信任資料。離線查驗透過 QR 碼與藍牙交換資料，查驗裝置不需要匯入對方的卡片。離線期間無法查詢最新撤銷狀態。"
+          }
+        }
+      }
+    },
     "Before enabling creation, each document type needs a tested parser, stable claim definitions, selective-disclosure signing, and matching verification at verifier.mashbean.net. Export and sharing are available now; credential creation stays gated until those checks exist.": {
       "localizations": {
         "zh-Hant": {
@@ -1288,6 +1298,16 @@
         }
       }
     },
+    "Check age online": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "線上查驗年齡"
+          }
+        }
+      }
+    },
     "Check age with ZKP or SD-JWT-VC": {
       "extractionState": "manual",
       "localizations": {
@@ -1295,6 +1315,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "查驗年齡（ZKP／SD-JWT-VC）"
+          }
+        }
+      }
+    },
+    "Check documents offline": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "離線查驗他人證件"
           }
         }
       }
@@ -2092,6 +2122,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "建立零知識證明"
+          }
+        }
+      }
+    },
+    "Create an age proof": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "建立年齡證明"
           }
         }
       }
@@ -5775,6 +5815,16 @@
         }
       }
     },
+    "Open the verifier website to set an age threshold and receive the proof result. Requires internet.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "開啟查驗網站，設定年齡門檻並接收驗證結果。需要網路。"
+          }
+        }
+      }
+    },
     "Opening this card's application did not work. Please try again.": {
       "localizations": {
         "zh-Hant": {
@@ -7402,12 +7452,42 @@
         }
       }
     },
+    "Scan an online age-check request": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "掃描線上年齡查驗要求"
+          }
+        }
+      }
+    },
+    "Scan an online age-check request from the verifier website. Name checks and offline proof requests are no longer supported.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "請掃描查驗網站上的線上年齡查驗要求。目前不支援姓名查驗或離線證明要求。"
+          }
+        }
+      }
+    },
     "Scan someone's document to check it is genuine — no network needed.": {
       "localizations": {
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
             "value": "掃描對方的證件，確認真偽——不需連網。"
+          }
+        }
+      }
+    },
+    "Scan the age-check QR code on the verifier website. Internet is required.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "請掃描查驗網站上的年齡查驗 QR 碼。這項功能需要網路。"
           }
         }
       }
@@ -7440,6 +7520,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "掃描查驗方的碼，%@ 直接送到對方手機——大約二十秒。不會留在任何其他地方。"
+          }
+        }
+      }
+    },
+    "Scan the verifier website’s request to prove an age threshold without sharing your birth date. Requires internet and a card with a birth date.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "掃描查驗網站的要求，證明已達指定年齡，保留出生日期。需要網路與含出生日期的證件。"
           }
         }
       }
@@ -8523,6 +8613,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "支援與關於"
+          }
+        }
+      }
+    },
+    "Supports offline verification. Scan a document to check its signature using trust data saved on this device.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "支援離線驗證。掃描對方的證件，使用本機已儲存的信任資料查驗簽章。"
           }
         }
       }
@@ -13976,6 +14076,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "連網時先儲存兩台裝置的信任資料，再準備各自所需檔案。斷網測試時：飛航模式開、Wi-Fi 關、藍牙開。iPad 不需匯入卡片。"
+          }
+        }
+      }
+    },
+    "While connected, update issuer trust data for later offline document checks.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "連網時更新發卡者信任資料，供斷網後查驗證件使用。"
           }
         }
       }
