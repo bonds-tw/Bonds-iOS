@@ -438,7 +438,10 @@ final class AgePredicateProofVerifierViewController: UIViewController {
     private var requestShownAt: UInt64?
     private var payloadReceivedAt: UInt64?
 
-    private let formatControl = UISegmentedControl(items: ["ZKP", "SD-JWT-VC"])
+    private let formatControl = UISegmentedControl(items: [
+        NSLocalizedString("Zero-knowledge proof", comment: "name proof format"),
+        "SD-JWT-VC",
+    ])
     private let sourceControl = UISegmentedControl(items: [
         NSLocalizedString("Phone-number card", comment: "name proof"),
         NSLocalizedString("MyData digital ID", comment: "name proof"),

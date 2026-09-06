@@ -680,6 +680,16 @@
         }
       }
     },
+    "Answer a name check": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "回應姓名查驗"
+          }
+        }
+      }
+    },
     "Answer an age check": {
       "extractionState": "manual",
       "localizations": {
@@ -1289,6 +1299,16 @@
         }
       }
     },
+    "Check name with ZKP or SD-JWT-VC": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "以零知識證明或 SD-JWT-VC 驗證姓名"
+          }
+        }
+      }
+    },
     "Check result": {
       "localizations": {
         "zh-Hant": {
@@ -1356,6 +1376,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "已在本機檢查 SD-JWT-VC 與持有人綁定。這次有揭露生日。撤銷狀態仍未知；MyData 自發數位身分證不代表政府背書。"
+          }
+        }
+      }
+    },
+    "Checked locally using SD-JWT-VC and holder binding. The name was disclosed. Current revocation is unknown; self-issued MyData is not government attestation.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已在本機以 SD-JWT-VC 與持有人綁定完成查驗，姓名已揭露。目前無法確認撤銷狀態；自發 MyData 數位身分證不是政府背書。"
           }
         }
       }
@@ -1642,6 +1672,16 @@
         }
       }
     },
+    "Compare local name checks using a phone-number card or MyData digital ID.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用門號驗證卡或 MyData 數位身分證進行本機姓名查驗。"
+          }
+        }
+      }
+    },
     "Complete an offline check, OIDC4VP presentation, or zero-knowledge proof run.": {
       "localizations": {
         "zh-Hant": {
@@ -1709,6 +1749,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "確認是你本人後開啟有備而來"
+          }
+        }
+      }
+    },
+    "Confirm the signed full name": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "確認已簽署的完整姓名"
           }
         }
       }
@@ -2001,6 +2051,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "要建立隱私年齡證明嗎？"
+          }
+        }
+      }
+    },
+    "Create a private name proof?": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "要建立姓名零知識證明嗎？"
           }
         }
       }
@@ -2475,6 +2535,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "要揭露生日進行比較測試嗎？"
+          }
+        }
+      }
+    },
+    "Disclose name": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "揭露姓名"
+          }
+        }
+      }
+    },
+    "Disclose name for comparison?": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "要揭露姓名進行比較嗎？"
+          }
+        }
+      }
+    },
+    "Disclose signed name": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "揭露已簽署姓名"
           }
         }
       }
@@ -4629,6 +4719,16 @@
         }
       }
     },
+    "MyData digital ID": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MyData 數位身分證"
+          }
+        }
+      }
+    },
     "MyData document": {
       "comment": "vault document detail title",
       "localizations": {
@@ -4716,6 +4816,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "姓名"
+          }
+        }
+      }
+    },
+    "Name and signed card metadata were sent. Check the verdict on the iPad.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已送出姓名與簽署的卡片資訊。請以 iPad 上的查驗結果為準。"
+          }
+        }
+      }
+    },
+    "Name checking request code": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "姓名查驗要求碼"
           }
         }
       }
@@ -4939,6 +5059,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "還沒有實測紀錄"
+          }
+        }
+      }
+    },
+    "No name or card data was sent.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未傳送姓名或卡片資料。"
           }
         }
       }
@@ -5575,6 +5705,16 @@
         }
       }
     },
+    "Only the yes/no statement is returned. The hidden name, card and proving files stay here.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "只回傳「是／否」；隱藏的姓名、卡片與證明檔案都留在這支 iPhone。"
+          }
+        }
+      }
+    },
     "Open MyData Personal documents": {
       "localizations": {
         "zh-Hant": {
@@ -5743,6 +5883,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "個人公文接收站"
+          }
+        }
+      }
+    },
+    "Phone-number card": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "門號驗證卡"
+          }
+        }
+      }
+    },
+    "Phone-number card issuer matched the saved API + Arbitrum trust evidence.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "門號驗證卡的發卡者符合已儲存的 API 與 Arbitrum 信任證據。"
           }
         }
       }
@@ -6233,6 +6393,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "私密金鑰"
+          }
+        }
+      }
+    },
+    "Private name proof": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "姓名零知識證明"
           }
         }
       }
@@ -8106,6 +8276,16 @@
         }
       }
     },
+    "Source: self-asserted MyData digital-ID derivative; this is not a government attestation.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "來源：自發 MyData 數位身分證衍生憑證；這不是政府背書。"
+          }
+        }
+      }
+    },
     "Start again": {
       "localizations": {
         "zh-Hant": {
@@ -8974,6 +9154,26 @@
         }
       }
     },
+    "The checker asks whether your signed full name is exactly %@.\n\nPurpose: %@\nSource: %@\n\nThe zero-knowledge proof returns only yes or no. Your name and card remain on this phone.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查驗方想確認你已簽署的完整姓名是否正好是「%@」。\n\n用途：%@\n來源：%@\n\n零知識證明只回傳「是／否」。姓名與卡片仍留在這支 iPhone。"
+          }
+        }
+      }
+    },
+    "The checker asks whether your signed full name is exactly %@.\n\nThis SD-JWT-VC comparison sends your name, issuer-signed card metadata and a holder-binding signature over Bluetooth. Stable card identifiers may be visible. This is not a zero-knowledge proof.\n\nPurpose: %@\nSource: %@": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查驗方想確認你已簽署的完整姓名是否正好是「%@」。\n\n這項 SD-JWT-VC 比較會透過藍牙送出姓名、發卡者簽署的卡片資訊與持有人綁定簽章；可能會顯示固定的卡片識別資料。這不是零知識證明。\n\n用途：%@\n來源：%@"
+          }
+        }
+      }
+    },
     "The checker did not provide a safe, readable purpose for this request.": {
       "localizations": {
         "zh-Hant": {
@@ -9234,6 +9434,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "揭露的生日未符合這次要求的年齡門檻。"
+          }
+        }
+      }
+    },
+    "The disclosed name does not equal the requested name.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "揭露的姓名與查驗要求中的姓名不相同。"
           }
         }
       }
@@ -10041,6 +10251,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "依查驗要求揭露生日或建立隱私證明；送出前會請你確認。"
+          }
+        }
+      }
+    },
+    "The request determines whether to disclose the signed name or create a private equality proof. You confirm before anything is sent.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查驗要求會決定要揭露已簽署姓名，或建立不揭露姓名的相等證明。送出前會先請你確認。"
           }
         }
       }
@@ -10992,6 +11212,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "這張卡片沒有可用來建立證明的生日欄位。"
+          }
+        }
+      }
+    },
+    "This card has no supported full-name field to prove from.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這張卡片沒有可用於建立證明的完整姓名欄位。"
           }
         }
       }
@@ -13162,6 +13392,16 @@
         }
       }
     },
+    "Verified: name is %@": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "驗證成功：姓名為 %@"
+          }
+        }
+      }
+    },
     "Verified: the successful Arbitrum transaction and the contract's current, non-revoked record contain the same DID document, organisation and category values as the official API.": {
       "localizations": {
         "zh-Hant": {
@@ -14174,12 +14414,32 @@
         }
       }
     },
+    "phone-number verification card": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "門號驗證卡"
+          }
+        }
+      }
+    },
     "self-issued / MyData document": {
       "localizations": {
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
             "value": "自發證件／MyData 資料"
+          }
+        }
+      }
+    },
+    "self-issued MyData digital ID": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自發 MyData 數位身分證"
           }
         }
       }
