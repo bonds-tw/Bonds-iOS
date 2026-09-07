@@ -22,10 +22,12 @@ enum AgePredicateProofError: Error, Equatable, LocalizedError {
     case statementMismatch
     case malformedPackage
     case noBirthDate
+    case noFullName
     case credentialIsNotTrusted
     case proofCreationFailed
     case proofRejected
     case nativeEngineUnavailable
+    case offlineAssetsMissing
     /// The request names a website to send the proof to, and it is not one
     /// this app will post a proof to.
     case untrustedResponseHost
@@ -34,6 +36,7 @@ enum AgePredicateProofError: Error, Equatable, LocalizedError {
     /// The checker's website read the proof and refused it.
     case webRejected(String)
     case network
+    case onlineAgeRequestRequired
 
     var errorDescription: String? {
         switch self {
@@ -53,6 +56,8 @@ enum AgePredicateProofError: Error, Equatable, LocalizedError {
             return NSLocalizedString("The received field proof is incomplete or damaged.", comment: "age proof")
         case .noBirthDate:
             return NSLocalizedString("This card has no supported date-of-birth field to prove from.", comment: "age proof")
+        case .noFullName:
+            return NSLocalizedString("This card has no supported full-name field to prove from.", comment: "name proof")
         case .credentialIsNotTrusted:
             return NSLocalizedString("This government card does not have the independently saved API and blockchain trust evidence required for this proof.", comment: "age proof")
         case .proofCreationFailed:
@@ -61,6 +66,8 @@ enum AgePredicateProofError: Error, Equatable, LocalizedError {
             return NSLocalizedString("The zero-knowledge proof did not verify.", comment: "age proof")
         case .nativeEngineUnavailable:
             return NSLocalizedString("This build does not include the field-proof engine.", comment: "age proof")
+        case .offlineAssetsMissing:
+            return NSLocalizedString("Prepare offline checking in Use while connected, then retry this request.", comment: "offline preparation")
         case .untrustedResponseHost:
             return NSLocalizedString("This request asks to send the proof to a website this app does not trust, so nothing was sent.", comment: "age proof")
         case .webResponseUnreadable:
@@ -68,6 +75,8 @@ enum AgePredicateProofError: Error, Equatable, LocalizedError {
         case .webRejected(let reason):
             return String(format: NSLocalizedString("The checker's website did not accept the proof: %@", comment: "age proof"),
                           reason)
+        case .onlineAgeRequestRequired:
+            return NSLocalizedString("Scan an online age-check request from the verifier website. Name checks and offline proof requests are no longer supported.", comment: "online age proof")
         case .network:
             return NSLocalizedString("The proof could not be sent to the checker's website. Check the connection and try again.", comment: "age proof")
         }
@@ -78,6 +87,8 @@ enum AgePredicateProofError: Error, Equatable, LocalizedError {
 /// this nonce exists before proving and is checked as a public circuit input.
 struct AgePredicateProofRequest: Codable, Equatable, Sendable {
     static let currentVersion = 1
+    static let nameProofVersion = 3
+    static let nameDisclosureVersion = 4
     static let lifetime: TimeInterval = VerifierSession.pendingRequestLifetime
     static let nonceByteCount = 32
 
@@ -91,6 +102,10 @@ struct AgePredicateProofRequest: Codable, Equatable, Sendable {
     let cutoffDate: String
     let minimumAge: Int
     let createdAt: Date
+    /// Present only for the UTF-8 full-name equality profile. It is public
+    /// verifier policy, while the credential's signed name remains hidden in
+    /// the ZKP path.
+    let targetName: String?
 
     /// Where a *web* checker wants the proof posted. `nil` for the two-device
     /// flow, where the proof travels over the one-time Bluetooth service.
@@ -103,6 +118,17 @@ struct AgePredicateProofRequest: Codable, Equatable, Sendable {
     /// rather than open: a stranger's QR must not be able to route a proof
     /// anywhere it likes.
     let responseURL: URL?
+    private let presentationFormat: String?
+    var disclosesBirthdate: Bool { version == 2 && presentationFormat == "sd-jwt" }
+    var checksName: Bool {
+        (version == Self.nameProofVersion || version == Self.nameDisclosureVersion)
+            && targetName != nil
+    }
+    var disclosesName: Bool {
+        version == Self.nameDisclosureVersion && presentationFormat == "sd-jwt"
+            && targetName != nil
+    }
+    var usesSDJWT: Bool { disclosesBirthdate || disclosesName }
 
     /// Websites this app will post an age proof to. The independent verifier
     /// at `verifier.mashbean.net` is trusted in every build: the package holds
@@ -126,6 +152,8 @@ struct AgePredicateProofRequest: Codable, Equatable, Sendable {
         case minimumAge = "a"
         case createdAt = "t"
         case responseURL = "u"
+        case presentationFormat = "f"
+        case targetName = "n"
     }
 
     init(serviceID: UUID = UUID(),
@@ -133,6 +161,7 @@ struct AgePredicateProofRequest: Codable, Equatable, Sendable {
          credentialSource: PresentationCredentialSource,
          minimumAge: Int = AgePredicate.majority,
          responseURL: URL? = nil,
+         discloseBirthdate: Bool = false,
          now: Date = Date()) throws {
         let cleanPurpose = UntrustedText(purpose, limit: PresentationRequest.maximumPurposeLength)
         guard !cleanPurpose.isEmpty,
@@ -149,7 +178,9 @@ struct AgePredicateProofRequest: Codable, Equatable, Sendable {
         guard SecRandomCopyBytes(kSecRandomDefault, random.count, &random) == errSecSuccess else {
             throw AgePredicateProofError.randomnessUnavailable
         }
-        version = Self.currentVersion
+        guard !discloseBirthdate || responseURL == nil else { throw AgePredicateProofError.malformedRequest }
+        version = discloseBirthdate ? 2 : Self.currentVersion
+        presentationFormat = discloseBirthdate ? "sd-jwt" : nil
         self.serviceID = serviceID
         nonce = Data(random).base64URLEncodedString()
         self.purpose = cleanPurpose.text
@@ -157,12 +188,48 @@ struct AgePredicateProofRequest: Codable, Equatable, Sendable {
         cutoffDate = Self.dateString(cutoff)
         self.minimumAge = minimumAge
         createdAt = Date(timeIntervalSince1970: floor(now.timeIntervalSince1970))
+        targetName = nil
         if let responseURL {
             guard Self.isTrustedResponseURL(responseURL) else {
                 throw AgePredicateProofError.untrustedResponseHost
             }
         }
         self.responseURL = responseURL
+    }
+
+    init(serviceID: UUID = UUID(),
+         purpose: String,
+         credentialSource: PresentationCredentialSource,
+         targetName: String,
+         discloseName: Bool = false,
+         now: Date = Date()) throws {
+        let cleanPurpose = UntrustedText(purpose, limit: PresentationRequest.maximumPurposeLength)
+        guard !cleanPurpose.isEmpty,
+              !cleanPurpose.wasTruncated,
+              !cleanPurpose.containedControlCharacters else {
+            throw AgePredicateProofError.purposeInvalid
+        }
+        let normalizedName = targetName.precomposedStringWithCanonicalMapping
+        guard normalizedName.utf8.elementsEqual(targetName.utf8),
+              (1...31).contains(normalizedName.utf8.count),
+              !normalizedName.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else {
+            throw AgePredicateProofError.malformedRequest
+        }
+        var random = [UInt8](repeating: 0, count: Self.nonceByteCount)
+        guard SecRandomCopyBytes(kSecRandomDefault, random.count, &random) == errSecSuccess else {
+            throw AgePredicateProofError.randomnessUnavailable
+        }
+        version = discloseName ? Self.nameDisclosureVersion : Self.nameProofVersion
+        presentationFormat = discloseName ? "sd-jwt" : nil
+        self.serviceID = serviceID
+        nonce = Data(random).base64URLEncodedString()
+        self.purpose = cleanPurpose.text
+        self.credentialSource = credentialSource
+        cutoffDate = ""
+        minimumAge = 0
+        createdAt = Date(timeIntervalSince1970: floor(now.timeIntervalSince1970))
+        self.targetName = normalizedName
+        self.responseURL = nil
     }
 
     /// HTTPS, an allow-listed host, and nothing that would let a URL smuggle
@@ -185,6 +252,24 @@ struct AgePredicateProofRequest: Codable, Equatable, Sendable {
         return String(decoding: try encoder.encode(self), as: UTF8.self)
     }
 
+    /// Product entry point. Legacy formats remain decodable for recorded test
+    /// evidence, but cannot start proving or disclosure in the app.
+    static func decodeOnlineAge(from text: String, now: Date = Date()) throws -> AgePredicateProofRequest {
+        let request = try decode(from: text, now: now)
+        _ = try request.onlineAgeResponseURL(now: now)
+        return request
+    }
+
+    func onlineAgeResponseURL(now: Date = Date()) throws -> URL {
+        guard version == Self.currentVersion, !checksName, !usesSDJWT,
+              let responseURL else {
+            throw AgePredicateProofError.onlineAgeRequestRequired
+        }
+        // Revalidate typed requests too, including expiry and the destination.
+        _ = try Self.decode(from: encodedForTransport(), now: now)
+        return responseURL
+    }
+
     static func decode(from text: String, now: Date = Date()) throws -> AgePredicateProofRequest {
         guard let data = text.data(using: .utf8) else { throw AgePredicateProofError.malformedRequest }
         let decoder = JSONDecoder()
@@ -192,13 +277,30 @@ struct AgePredicateProofRequest: Codable, Equatable, Sendable {
         let decoded: AgePredicateProofRequest
         do { decoded = try decoder.decode(AgePredicateProofRequest.self, from: data) }
         catch { throw AgePredicateProofError.malformedRequest }
-        guard decoded.version == currentVersion else {
+        guard (decoded.version == currentVersion && decoded.presentationFormat == nil)
+                || (decoded.disclosesBirthdate && decoded.responseURL == nil)
+                || (decoded.version == nameProofVersion && decoded.presentationFormat == nil
+                    && decoded.responseURL == nil)
+                || (decoded.disclosesName && decoded.responseURL == nil) else {
             throw AgePredicateProofError.unsupportedVersion(decoded.version)
         }
-        guard Data(base64URLEncoded: decoded.nonce)?.count == nonceByteCount,
-              (1...120).contains(decoded.minimumAge),
-              cutoffComponents(decoded.cutoffDate) != nil else {
+        guard Data(base64URLEncoded: decoded.nonce)?.count == nonceByteCount else {
             throw AgePredicateProofError.malformedRequest
+        }
+        if decoded.checksName {
+            guard decoded.minimumAge == 0, decoded.cutoffDate.isEmpty,
+                  let target = decoded.targetName,
+                  target.precomposedStringWithCanonicalMapping.utf8.elementsEqual(target.utf8),
+                  (1...31).contains(target.utf8.count),
+                  !target.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else {
+                throw AgePredicateProofError.malformedRequest
+            }
+        } else {
+            guard decoded.targetName == nil,
+                  (1...120).contains(decoded.minimumAge),
+                  cutoffComponents(decoded.cutoffDate) != nil else {
+                throw AgePredicateProofError.malformedRequest
+            }
         }
         if let responseURL = decoded.responseURL, !isTrustedResponseURL(responseURL) {
             throw AgePredicateProofError.untrustedResponseHost
@@ -210,14 +312,16 @@ struct AgePredicateProofRequest: Codable, Equatable, Sendable {
         }
         // Permit a small amount of clock skew, but never let a verifier mint a
         // request far in the future and thereby extend the one-time window.
-        let age = now.timeIntervalSince(decoded.createdAt)
-        guard age >= -60, age <= lifetime else {
-            throw AgePredicateProofError.staleRequest
-        }
+        try decoded.validateFreshness(now: now)
         return decoded
     }
 
     /// Circuit literal for the credential's declared normalization format.
+    func validateFreshness(now: Date = Date()) throws {
+        let age = now.timeIntervalSince(createdAt)
+        guard age >= -60, age <= Self.lifetime else { throw AgePredicateProofError.staleRequest }
+    }
+
     func cutoffValue(claimFormat: UInt8) throws -> UInt64 {
         guard let parts = Self.cutoffComponents(cutoffDate) else {
             throw AgePredicateProofError.malformedRequest
@@ -265,10 +369,12 @@ struct AgePredicateProofRequest: Codable, Equatable, Sendable {
 /// disclosure, birth date, witness and proving keys never leave the holder.
 struct AgePredicateProofPackage: Codable, Equatable, Sendable {
     static let currentVersion = 1
+    static let nameProofVersion = 2
     static let maximumArtifactBytes = 2_000_000
     static let supportedBirthClaimNames: Set<String> = [
         "roc_birthday", "birthdate", "birthday", "date_of_birth", "birth_date", "出生日期",
     ]
+    static let supportedNameClaimNames: Set<String> = ["name", "full_name", "姓名"]
 
     let version: Int
     let requestNonce: String
@@ -277,11 +383,14 @@ struct AgePredicateProofPackage: Codable, Equatable, Sendable {
     let claimFormat: UInt8
     let cutoffDate: String
     let minimumAge: Int
+    let targetName: String?
     let issuerDID: String
     let prepareProof: Data
     let showProof: Data
     let prepareMilliseconds: UInt64
     let showMilliseconds: UInt64
+    /// Holder-reported telemetry, never an input to the trust decision.
+    let prepareWasCached: Bool?
     let createdAt: Date
 
     init(request: AgePredicateProofRequest,
@@ -292,25 +401,29 @@ struct AgePredicateProofPackage: Codable, Equatable, Sendable {
          showProof: Data,
          prepareMilliseconds: UInt64,
          showMilliseconds: UInt64,
+         prepareWasCached: Bool? = nil,
          createdAt: Date = Date()) throws {
-        version = Self.currentVersion
+        version = request.checksName ? Self.nameProofVersion : Self.currentVersion
         requestNonce = request.nonce
         credentialSource = request.credentialSource
         self.claimName = claimName
         self.claimFormat = claimFormat
         cutoffDate = request.cutoffDate
         minimumAge = request.minimumAge
+        targetName = request.targetName
         self.issuerDID = issuerDID
         self.prepareProof = prepareProof
         self.showProof = showProof
         self.prepareMilliseconds = prepareMilliseconds
         self.showMilliseconds = showMilliseconds
+        self.prepareWasCached = prepareWasCached
         self.createdAt = createdAt
         try validate(answering: request)
     }
 
     func validate(answering request: AgePredicateProofRequest) throws {
-        guard version == Self.currentVersion else {
+        guard !request.usesSDJWT else { throw AgePredicateProofError.statementMismatch }
+        guard version == (request.checksName ? Self.nameProofVersion : Self.currentVersion) else {
             throw AgePredicateProofError.unsupportedVersion(version)
         }
         guard requestNonce == request.nonce,
@@ -319,18 +432,43 @@ struct AgePredicateProofPackage: Codable, Equatable, Sendable {
         }
         guard cutoffDate == request.cutoffDate,
               minimumAge == request.minimumAge,
-              [UInt8(2), UInt8(3)].contains(claimFormat),
-              Self.supportedBirthClaimNames.contains(claimName),
+              Self.identicalUTF8(targetName, request.targetName),
               claimName.utf8.count <= 31,
               issuerDID.hasPrefix("did:key:"), issuerDID.utf8.count <= 300 else {
             throw AgePredicateProofError.statementMismatch
+        }
+        if request.checksName {
+            guard claimFormat == 5,
+                  Self.supportedNameClaimNames.contains(claimName),
+                  let targetName, (1...31).contains(targetName.utf8.count) else {
+                throw AgePredicateProofError.statementMismatch
+            }
+        } else {
+            guard targetName == nil,
+                  [UInt8(2), UInt8(3)].contains(claimFormat),
+                  Self.supportedBirthClaimNames.contains(claimName) else {
+                throw AgePredicateProofError.statementMismatch
+            }
         }
         guard !prepareProof.isEmpty, !showProof.isEmpty,
               prepareProof.count <= Self.maximumArtifactBytes,
               showProof.count <= Self.maximumArtifactBytes else {
             throw AgePredicateProofError.malformedPackage
         }
-        _ = try request.cutoffValue(claimFormat: claimFormat)
+        if !request.checksName {
+            _ = try request.cutoffValue(claimFormat: claimFormat)
+        }
+    }
+
+    private static func identicalUTF8(_ lhs: String?, _ rhs: String?) -> Bool {
+        switch (lhs, rhs) {
+        case (.none, .none):
+            return true
+        case let (.some(lhs), .some(rhs)):
+            return lhs.utf8.elementsEqual(rhs.utf8)
+        default:
+            return false
+        }
     }
 
     func encoded() throws -> Data {
@@ -445,8 +583,11 @@ actor OpenACAgePredicateProofEngine: AgePredicateProofEngine {
                holder: DeviceKey,
                cacheKey: String,
                assetProgress: @escaping @Sendable (Double) -> Void) async throws -> AgePredicateProofPackage {
+        _ = try request.onlineAgeResponseURL()
+        let cacheKey = cacheKey + ".openac-age-v1"
         guard let assets else { throw AgePredicateProofError.nativeEngineUnavailable }
-        let installed = try await assets.prepare(.prover, progress: assetProgress)
+        let installed = try await assets.prepare(.prover, allowDownloads: true,
+                                                  progress: assetProgress)
         let issuer = try Self.coordinates(issuerPublicKeyX963)
         // Signed once; the same nonce is answered on a retry, so the same
         // signature applies.
@@ -583,7 +724,8 @@ actor OpenACAgePredicateProofEngine: AgePredicateProofEngine {
                 prepareProof: Data(prepareProof),
                 showProof: Data(showProof),
                 prepareMilliseconds: prepareMilliseconds,
-                showMilliseconds: showMilliseconds)
+                showMilliseconds: showMilliseconds,
+                prepareWasCached: cacheUse.hit)
         } catch let error as AgePredicateProofError {
             throw error
         } catch {
@@ -595,9 +737,10 @@ actor OpenACAgePredicateProofEngine: AgePredicateProofEngine {
                 request: AgePredicateProofRequest,
                 expectedIssuerPublicKeyX963: Data,
                 assetProgress: @escaping @Sendable (Double) -> Void) async throws -> AgePredicateProofTiming {
+        _ = try request.onlineAgeResponseURL()
         try package.validate(answering: request)
         guard let assets else { throw AgePredicateProofError.nativeEngineUnavailable }
-        let installed = try await assets.prepare(.verifier, progress: assetProgress)
+        let installed = try await assets.prepare(.verifier, allowDownloads: true, progress: assetProgress)
         let scratch = try makeScratch(installedCircom: installed, role: .verifier)
         defer { try? fileManager.removeItem(at: scratch.root) }
         let keyDirectory = scratch.documents.appendingPathComponent("keys", isDirectory: true)

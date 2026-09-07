@@ -195,6 +195,9 @@ final class DiagnosticsViewController: UICollectionViewController {
                 "\(formatter.string(from: record.recordedAt)) · \(transportName(record.transport))",
                 "\(record.deviceModel) · \(record.osVersion)"
             ]
+            if let cell = record.matrixCell {
+                details.insert("Matrix \(cell.rawValue)", at: 0)
+            }
             if let milliseconds = record.preparationMilliseconds {
                 details.append(String(format: NSLocalizedString("Preparation: %.2f seconds", comment: "timing"),
                                       Double(milliseconds) / 1_000))
@@ -274,12 +277,18 @@ final class DiagnosticsViewController: UICollectionViewController {
 
     private static func flowName(_ flow: VerificationRunRecord.Flow) -> String {
         switch flow {
+        case .disclosedAgePresentation:
+            return "SD-JWT-VC · " + NSLocalizedString("Disclose birth date", comment: "offline comparison")
+        case .disclosedNamePresentation:
+            return "SD-JWT-VC · " + NSLocalizedString("Disclose signed name", comment: "offline comparison")
         case .offlinePresentation:
             return NSLocalizedString("Offline credential verification", comment: "timing flow")
         case .oid4vpPresentation:
             return NSLocalizedString("Online OIDC4VP presentation", comment: "timing flow")
         case .privateAgeProof:
             return NSLocalizedString("Private age proof", comment: "timing flow")
+        case .privateNameProof:
+            return NSLocalizedString("Private name equality proof", comment: "timing flow")
         case .zeroKnowledgeProofCreation:
             return NSLocalizedString("Zero-knowledge proof creation", comment: "timing flow")
         case .zeroKnowledgeProofVerification:

@@ -32,14 +32,17 @@ struct VerificationRunRecord: Codable, Hashable, Identifiable {
 
     enum Flow: String, Codable {
         case offlinePresentation
+        case disclosedAgePresentation
+        case disclosedNamePresentation
         case oid4vpPresentation
         case privateAgeProof
+        case privateNameProof
         case zeroKnowledgeProofCreation
         case zeroKnowledgeProofVerification
     }
 
-    /// The executable cells in the field-test matrix. N1 is deliberately absent:
-    /// fully-offline OIDC4VP direct_post is a protocol boundary, not a run.
+    /// The executable cells in the field-test matrix. The N1–N4 cells compare
+    /// the same exact-name policy across both credential sources and formats.
     enum MatrixCell: String, Codable, CaseIterable {
         case a1 = "A1"
         case a2 = "A2"
@@ -53,6 +56,12 @@ struct VerificationRunRecord: Codable, Hashable, Identifiable {
         /// The SD-JWT-VC counterparts over the same website are A2 and G1.
         case w1 = "W1"
         case w2 = "W2"
+        case s1 = "S1" // Government SD-JWT age disclosure over BLE
+        case s2 = "S2" // MyData national-ID age derivative over BLE
+        case n1 = "N1" // Phone-number card SD-JWT name disclosure over BLE
+        case n2 = "N2" // MyData digital-ID SD-JWT name disclosure over BLE
+        case n3 = "N3" // Phone-number card private UTF-8 name equality over BLE
+        case n4 = "N4" // MyData digital-ID private UTF-8 name equality over BLE
     }
 
     enum RunTemperature: String, Codable {
@@ -129,6 +138,9 @@ struct VerificationRunRecord: Codable, Hashable, Identifiable {
     /// the new age proof to one opaque wall-clock number.
     let proofPrepareMilliseconds: UInt64?
     let proofShowMilliseconds: UInt64?
+    let proofPrepareWasCached: Bool?
+    /// Serialized bytes received or sent, excluding BLE framing.
+    let payloadBytes: UInt64?
 
     /// A short SHA-256 prefix over a one-time BLE service or OIDC state. It lets
     /// the iPhone and iPad logs be paired without retaining the request ID,
@@ -161,6 +173,8 @@ struct VerificationRunRecord: Codable, Hashable, Identifiable {
          endToEndMilliseconds: UInt64? = nil,
          proofPrepareMilliseconds: UInt64? = nil,
          proofShowMilliseconds: UInt64? = nil,
+         proofPrepareWasCached: Bool? = nil,
+         payloadBytes: UInt64? = nil,
          correlationToken: String? = nil,
          qrFallbackWasVisible: Bool? = nil,
          processSessionID: UUID? = nil,
@@ -189,6 +203,8 @@ struct VerificationRunRecord: Codable, Hashable, Identifiable {
         self.endToEndMilliseconds = endToEndMilliseconds
         self.proofPrepareMilliseconds = proofPrepareMilliseconds
         self.proofShowMilliseconds = proofShowMilliseconds
+        self.proofPrepareWasCached = proofPrepareWasCached
+        self.payloadBytes = payloadBytes
         self.correlationToken = correlationToken
         self.qrFallbackWasVisible = qrFallbackWasVisible
         self.processSessionID = processSessionID
@@ -212,12 +228,18 @@ struct VerificationRunRecord: Codable, Hashable, Identifiable {
                                         credentialKind: CredentialKind,
                                         transport: Transport) -> MatrixCell? {
         switch (flow, credentialKind) {
+        case (.disclosedAgePresentation, .governmentWallet): return .s1
+        case (.disclosedAgePresentation, .selfIssued): return .s2
+        case (.disclosedNamePresentation, .governmentWallet): return .n1
+        case (.disclosedNamePresentation, .selfIssued): return .n2
         case (.offlinePresentation, .selfIssued): return .a1
         case (.offlinePresentation, .governmentWallet): return .g2
         case (.oid4vpPresentation, .governmentWallet): return .a2
         case (.oid4vpPresentation, .selfIssued): return .g1
         case (.privateAgeProof, .governmentWallet): return transport == .https ? .w1 : .g3
         case (.privateAgeProof, .selfIssued): return transport == .https ? .w2 : .g4
+        case (.privateNameProof, .governmentWallet): return .n3
+        case (.privateNameProof, .selfIssued): return .n4
         case (.zeroKnowledgeProofCreation, .mobileCertificate),
              (.zeroKnowledgeProofVerification, .mobileCertificate): return .a3
         default: return nil
@@ -239,6 +261,8 @@ struct VerificationRunRecord: Codable, Hashable, Identifiable {
              endToEndMilliseconds: endToEndMilliseconds,
              proofPrepareMilliseconds: proofPrepareMilliseconds,
              proofShowMilliseconds: proofShowMilliseconds,
+             proofPrepareWasCached: proofPrepareWasCached,
+             payloadBytes: payloadBytes,
              correlationToken: correlationToken,
              qrFallbackWasVisible: qrFallbackWasVisible,
              processSessionID: processSessionID ?? runtime.sessionID,

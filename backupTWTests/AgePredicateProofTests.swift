@@ -8,6 +8,50 @@ import Foundation
 import Testing
 @testable import backupTW
 
+struct OnlineAgeProofRequestTests {
+    private let now = Date(timeIntervalSince1970: 1_788_000_000)
+    private let endpoint = URL(string: "https://verifier.mashbean.net/api/zkp/response/test")!
+
+    @Test func onlineAgeRequestKeepsTheChosenThresholdAndDestination() throws {
+        let request = try AgePredicateProofRequest(
+            purpose: "Age check", credentialSource: .selfIssued, minimumAge: 21,
+            responseURL: endpoint, now: now)
+        let decoded = try AgePredicateProofRequest.decodeOnlineAge(
+            from: request.encodedForTransport(), now: now)
+        #expect(decoded.minimumAge == 21)
+        #expect(try decoded.onlineAgeResponseURL(now: now) == endpoint)
+    }
+
+    @Test func legacyNameAndDisclosureRequestsCannotStartTheProductFlow() throws {
+        let requests = [
+            try AgePredicateProofRequest(purpose: "Legacy", credentialSource: .selfIssued, now: now),
+            try AgePredicateProofRequest(purpose: "Legacy", credentialSource: .selfIssued,
+                                         discloseBirthdate: true, now: now),
+            try AgePredicateProofRequest(purpose: "Legacy", credentialSource: .twdiw,
+                                         targetName: "王小明", now: now),
+            try AgePredicateProofRequest(purpose: "Legacy", credentialSource: .selfIssued,
+                                         targetName: "王小明", discloseName: true, now: now)
+        ]
+        for request in requests {
+            #expect(throws: AgePredicateProofError.onlineAgeRequestRequired) {
+                try AgePredicateProofRequest.decodeOnlineAge(from: request.encodedForTransport(), now: now)
+            }
+            #expect(throws: AgePredicateProofError.onlineAgeRequestRequired) {
+                try request.onlineAgeResponseURL(now: now)
+            }
+        }
+    }
+
+    @Test func typedRequestIsRecheckedAfterProofCreation() throws {
+        let request = try AgePredicateProofRequest(
+            purpose: "Age check", credentialSource: .selfIssued,
+            responseURL: endpoint, now: now)
+        #expect(throws: AgePredicateProofError.staleRequest) {
+            try request.onlineAgeResponseURL(now: now.addingTimeInterval(AgePredicateProofRequest.lifetime + 1))
+        }
+    }
+}
+
 struct AgePredicateProofRequestTests {
 
     private static let now = ROCDate.taipeiCalendar.date(
@@ -26,6 +70,45 @@ struct AgePredicateProofRequestTests {
         #expect(try decoded.cutoffValue(claimFormat: 2) == 20_080_901)
         #expect(try decoded.cutoffValue(claimFormat: 3) == 970_901)
         #expect(Data(base64URLEncoded: decoded.nonce)?.count == 32)
+    }
+
+    @Test func fullUTF8NameRequestsRoundTripForBothProofFormats() throws {
+        let privateRequest = try AgePredicateProofRequest(
+            purpose: "確認本人姓名",
+            credentialSource: .twdiw,
+            targetName: "黃彥霖",
+            now: Self.now)
+        let disclosedRequest = try AgePredicateProofRequest(
+            purpose: "確認本人姓名",
+            credentialSource: .selfIssued,
+            targetName: "黃彥霖",
+            discloseName: true,
+            now: Self.now)
+
+        let decodedPrivate = try AgePredicateProofRequest.decode(
+            from: privateRequest.encodedForTransport(), now: Self.now)
+        let decodedDisclosure = try AgePredicateProofRequest.decode(
+            from: disclosedRequest.encodedForTransport(), now: Self.now)
+
+        #expect(decodedPrivate == privateRequest)
+        #expect(decodedPrivate.version == AgePredicateProofRequest.nameProofVersion)
+        #expect(decodedPrivate.checksName)
+        #expect(!decodedPrivate.usesSDJWT)
+        #expect(decodedPrivate.cutoffDate.isEmpty)
+        #expect(decodedPrivate.minimumAge == 0)
+        #expect(decodedDisclosure == disclosedRequest)
+        #expect(decodedDisclosure.version == AgePredicateProofRequest.nameDisclosureVersion)
+        #expect(decodedDisclosure.disclosesName)
+        #expect(decodedDisclosure.usesSDJWT)
+    }
+
+    @Test(arguments: ["", "e\u{301}", "黃\n彥霖", "黃黃黃黃黃黃黃黃黃黃黃"])
+    func invalidOrOversizedNamesNeverEnterARequest(_ name: String) {
+        #expect(throws: AgePredicateProofError.malformedRequest) {
+            try AgePredicateProofRequest(
+                purpose: "確認本人姓名", credentialSource: .twdiw,
+                targetName: name, now: Self.now)
+        }
     }
 
     @Test func expiredRequestIsRefused() throws {
@@ -159,6 +242,55 @@ struct AgePredicateProofRequestTests {
         }
     }
 
+    @Test func nameProofPackageIsBoundToUTF8FormatClaimAndTarget() throws {
+        let request = try AgePredicateProofRequest(
+            purpose: "確認本人姓名", credentialSource: .twdiw,
+            targetName: "黃彥霖", now: Self.now)
+        let package = try AgePredicateProofPackage(
+            request: request, claimName: "name", claimFormat: 5,
+            issuerDID: "did:key:zIssuer", prepareProof: Data([1, 2]),
+            showProof: Data([3, 4]), prepareMilliseconds: 1200,
+            showMilliseconds: 700, createdAt: Self.now)
+        try package.validate(answering: request)
+
+        var object = try #require(JSONSerialization.jsonObject(
+            with: package.encoded()) as? [String: Any])
+        object["targetName"] = "另一個人"
+        let altered = try JSONSerialization.data(withJSONObject: object)
+        let alteredPackage = try AgePredicateProofPackage.decoded(from: altered)
+        #expect(throws: AgePredicateProofError.statementMismatch) {
+            try alteredPackage.validate(answering: request)
+        }
+
+        #expect(throws: AgePredicateProofError.statementMismatch) {
+            _ = try AgePredicateProofPackage(
+                request: request, claimName: "name", claimFormat: 4,
+                issuerDID: "did:key:zIssuer", prepareProof: Data([1]),
+                showProof: Data([2]), prepareMilliseconds: 1,
+                showMilliseconds: 1, createdAt: Self.now)
+        }
+    }
+
+    @Test func nameProofPackageRejectsACanonicallyEquivalentByteRewrite() throws {
+        let request = try AgePredicateProofRequest(
+            purpose: "確認本人姓名", credentialSource: .twdiw,
+            targetName: "é", now: Self.now)
+        let package = try AgePredicateProofPackage(
+            request: request, claimName: "name", claimFormat: 5,
+            issuerDID: "did:key:zIssuer", prepareProof: Data([1]),
+            showProof: Data([2]), prepareMilliseconds: 1,
+            showMilliseconds: 1, createdAt: Self.now)
+        var object = try #require(JSONSerialization.jsonObject(
+            with: package.encoded()) as? [String: Any])
+        object["targetName"] = "e\u{301}"
+        let altered = try JSONSerialization.data(withJSONObject: object)
+        let alteredPackage = try AgePredicateProofPackage.decoded(from: altered)
+
+        #expect(throws: AgePredicateProofError.statementMismatch) {
+            try alteredPackage.validate(answering: request)
+        }
+    }
+
     @Test func arbitraryDateFieldCannotBeRelabelledAsBirthdate() throws {
         let request = try AgePredicateProofRequest(
             purpose: "確認年齡", credentialSource: .twdiw, now: Self.now)
@@ -243,6 +375,37 @@ struct SelfIssuedMyDataAgeCredentialTests {
         #expect(parsed.disclosedClaims.first?.name == "birthdate")
         #expect(parsed.disclosedClaims.first?.value == "0830306")
         #expect(parsed.credentialType == "SelfIssuedMyDataAgeCredential")
+    }
+
+    @Test(.enabled(if: DeviceKeyAvailability.isAvailable))
+    func nameDerivativeContainsOnlyTheExactCommittedName() throws {
+        try? DeviceKey.deleteKey(tag: Self.keyTag, installRecord: nil)
+        defer { try? DeviceKey.deleteKey(tag: Self.keyTag, installRecord: nil) }
+        let key = try DeviceKey.loadOrCreate(tag: Self.keyTag, installRecord: nil)
+        let did = try DIDKey.did(fromP256PublicKeyX963: key.publicKeyX963)
+        let model = NationalIDModel(
+            nationality: "中華民國（臺灣）", unifiedNo: "A123456789", name: "黃彥霖",
+            birthdate: "民國 083年03月06日", addressOfHousehold: "臺北市中正區")
+        let (credential, disclosures) = VerifiableCredential.selectivelyDisclosableNationalID(
+            model, issuerDID: did, validFrom: Self.now)
+        let envelope = MOICASignedCredential(
+            payload: VerifiableCredential.base64URLEncoded(try credential.canonicalBytes()),
+            proof: MOICACredentialProof(
+                tbsConstruction: MOICACredentialProof.payloadDigestHexConstruction,
+                certificate: Data([1]).base64EncodedString(),
+                signature: Data(repeating: 0, count: 256).base64EncodedString()),
+            disclosures: disclosures.map(\.encoded))
+
+        let issued = try SelfIssuedMyDataNameCredential.issue(
+            stored: envelope.serialized(), signedBy: key, now: Self.now)
+        let parsed = try TWDIWCredentialReader.read(issued.sdJWT, now: Self.now)
+
+        #expect(parsed.issuerDID == issued.issuerDID)
+        #expect(parsed.holderKey.x963Representation == key.publicKeyX963)
+        #expect(parsed.disclosedClaims.count == 1)
+        #expect(parsed.disclosedClaims.first?.name == "name")
+        #expect(parsed.disclosedClaims.first?.value == "黃彥霖")
+        #expect(parsed.credentialType == "SelfIssuedMyDataNameCredential")
     }
 }
 

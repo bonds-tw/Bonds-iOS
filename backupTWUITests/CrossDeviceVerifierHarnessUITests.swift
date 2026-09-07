@@ -58,7 +58,7 @@ final class CrossDeviceVerifierHarnessUITests: XCTestCase {
         // does not care which locale the simulator happens to be in.
         let verifyEntry = app.staticTexts.matching(NSPredicate(
             format: "label CONTAINS %@ OR label CONTAINS %@",
-            "Check someone else's document", "查驗他人證件")).firstMatch
+            "Check documents offline", "離線查驗他人證件")).firstMatch
         XCTAssertTrue(verifyEntry.waitForExistence(timeout: 10), "the home screen never offered the verifier flow")
         verifyEntry.tap()
 

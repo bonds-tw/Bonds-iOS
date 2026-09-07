@@ -5,6 +5,7 @@
 //  Created by Denken Chen on 2025/8/27.
 //
 
+import SafariServices
 import UIKit
 
 private let reuseIdentifier = "UseCell"
@@ -43,9 +44,10 @@ class UseViewController: UICollectionViewController {
         // choose, that is a coin flip. The single `present` row now scans first
         // and routes by what the QR actually is (design system §10.2).
         static let present = NSLocalizedString("Show my document", comment: "")
-        static let verify = NSLocalizedString("Check someone else's document", comment: "")
-        static let createAgeProof = NSLocalizedString("Create a private age proof", comment: "age proof")
-        static let verifyAgeProof = NSLocalizedString("Check a private age proof", comment: "age proof")
+        static let verify = NSLocalizedString("Check documents offline", comment: "offline verification")
+        static let createAgeProof = NSLocalizedString("Create an age proof", comment: "online age proof")
+        static let verifyAgeProof = NSLocalizedString("Check age online", comment: "online age proof")
+        static let prepareOffline = NSLocalizedString("Prepare offline checking", comment: "offline preparation")
     }
 
     /// Recomputed on every appearance, not stored once at init.
@@ -82,14 +84,14 @@ class UseViewController: UICollectionViewController {
         Section(title: NSLocalizedString("Zero-knowledge proofs", comment: "use section"), items: [
             Item(image: UIImage(systemName: "person.text.rectangle.fill"),
                  title: Row.createAgeProof,
-                 secondaryText: NSLocalizedString(
-                    "Prove an age threshold from a government card or self-asserted MyData without revealing the birth date.",
-                    comment: "age proof")),
+                secondaryText: NSLocalizedString(
+                    "Scan the verifier website’s request to prove an age threshold without sharing your birth date. Requires internet and a card with a birth date.",
+                    comment: "online age proof")),
             Item(image: UIImage(systemName: "checkmark.seal.text.page.fill"),
                  title: Row.verifyAgeProof,
-                 secondaryText: NSLocalizedString(
-                    "Show one request QR; receive and verify the private proof directly over Bluetooth.",
-                    comment: "age proof"))
+                secondaryText: NSLocalizedString(
+                    "Open the verifier website to set an age threshold and receive the proof result. Requires internet.",
+                    comment: "online age proof"))
         ])
     }
 
@@ -172,7 +174,9 @@ class UseViewController: UICollectionViewController {
                     : NSLocalizedString("Add your ID first, then you can show it to a checker.", comment: "")),
             Item(image: UIImage(systemName: "checkmark.shield"),
                  title: Row.verify,
-                 secondaryText: NSLocalizedString("Scan someone's document to check it is genuine — no network needed.", comment: ""))
+                 secondaryText: NSLocalizedString("Supports offline verification. Scan a document to check its signature using trust data saved on this device.", comment: "offline verification")),
+            Item(image: UIImage(systemName: "arrow.down.circle"), title: Row.prepareOffline,
+                 secondaryText: NSLocalizedString("While connected, update issuer trust data for later offline document checks.", comment: "offline verification"))
         ])
     }
 
@@ -446,9 +450,11 @@ extension UseViewController {
             navigationController?.pushViewController(VerifierViewController(), animated: true)
         case Row.createAgeProof:
             AgePredicateProofHolderFlow.begin(on: navigationController)
+        case Row.prepareOffline:
+            navigationController?.pushViewController(OfflinePreparationViewController(), animated: true)
         case Row.verifyAgeProof:
-            navigationController?.pushViewController(
-                AgePredicateProofVerifierViewController(), animated: true)
+            let checker = SFSafariViewController(url: URL(string: "https://verifier.mashbean.net/zkp#zkp-try")!)
+            present(checker, animated: true)
         default:
             break
         }
