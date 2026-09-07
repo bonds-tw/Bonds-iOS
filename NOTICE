@@ -1,0 +1,44 @@
+Bonds-iOS (有備而來)
+Copyright 2026 Bonds.tw contributors
+
+Licensed under the Apache License, Version 2.0. See LICENSE.
+
+This product bundles or depends on the following third-party work.
+Their licenses are unchanged by inclusion here.
+
+Swift packages (resolved by Xcode, see backupTW.xcodeproj/project.pbxproj):
+
+  - openac-rsa-x509-swift
+    https://github.com/privacy-ethereum/openac-rsa-x509-swift
+    Groth16 prover/verifier bindings for the ethereum/zkID RSA X.509 circuits.
+
+  - Zip
+    https://github.com/marmelroy/Zip
+    MIT License. Used to open MyData ZIP downloads.
+
+Rust crates (tools/official-document-physical-card-signer, DEBUG-only desktop
+helper, not part of the iOS binary):
+
+  - open-gpki-pkcs11
+    https://github.com/chouhsiang/open-gpki-pkcs11
+    LGPL-2.1-or-later. PKCS#11 access to the physical 自然人憑證 card.
+
+Bundled certificates (backupTW/ZK/*.cer):
+
+  - MOICA-G3.cer and GRCA-G3.cer are public CA certificates published by the
+    Ministry of the Interior Certificate Authority (moica.nat.gov.tw) and the
+    Government Root Certification Authority (grca.nat.gov.tw). Their provenance
+    and SHA-256 fingerprints are recorded in backupTW/ZK/IssuerCertificate.swift.
+
+Downloaded at runtime, pinned by SHA-256 (backupTW/ZK/CircuitAssets.swift):
+
+  - ethereum/zkID circuit assets, release RSA-X.509-Cert-latest
+    https://github.com/ethereum/zkID
+  - privacy-ethereum/moica-revocation-smt revocation snapshot
+    https://github.com/privacy-ethereum/moica-revocation-smt
+
+Reference implementations studied while building the TWDIW integration
+(no code copied):
+
+  - moda-gov-tw/TWDIW-official-app (MIT)
+  - denkeni, "TWDIW: The Missing Manual", https://docs.denkeni.org/twdiw

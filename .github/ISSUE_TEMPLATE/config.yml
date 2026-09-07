@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security report / 安全回報
+    url: https://github.com/bonds-tw/Bonds-iOS/security/advisories/new
+    about: Do not file vulnerabilities as public issues. 安全問題請走私下回報。
+  - name: Field reports and background / 開發報告與背景
+    url: https://pro.mashbean.net/?series=ready-digital-government
+    about: The "有備而來" report series on pro.mashbean.net explains the design decisions and real-device test results.
