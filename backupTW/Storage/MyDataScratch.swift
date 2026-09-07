@@ -107,6 +107,24 @@ final class MyDataScratch: Sendable {
         return try Data(contentsOf: pdf)
     }
 
+    /// The first readable entry of a MyData archive: a PDF, or failing that a
+    /// CSV / TXT (some items are delivered as CSV only). Returns the bytes and
+    /// the lowercase extension so the caller knows how to read them.
+    func readableEntry(fromArchiveAt archive: URL) throws -> (data: Data, fileExtension: String) {
+        try Self.rejectUnsafeEntries(inArchiveAt: archive)
+        let destination = directory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try Self.createProtectedDirectory(at: destination)
+        try Zip.unzipFile(archive, destination: destination, overwrite: true, password: nil)
+        let contents = try FileManager.default.contentsOfDirectory(
+            at: destination, includingPropertiesForKeys: nil)
+        for ext in ["pdf", "csv", "txt"] {
+            if let file = contents.first(where: { $0.pathExtension.lowercased() == ext }) {
+                return (try Data(contentsOf: file), ext)
+            }
+        }
+        throw MyDataScratchError.noPDFInArchive
+    }
+
 #if DEBUG
     /// A **structure-only** description of a download that would not process — for
     /// working out what shape a non-national-ID MyData file arrives in. It reports

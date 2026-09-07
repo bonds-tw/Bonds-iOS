@@ -16,6 +16,10 @@ enum MyDataDocumentParserError: Error, Equatable {
     /// The document was recognised but a field the claims need is absent. The
     /// label is the human one from the page, so the holder can check the PDF.
     case missingField(String)
+    /// The PDF is password-protected and no password opened it. MyData seals
+    /// its PDFs with the holder's national ID number; without a stored national
+    /// ID card there is nothing on the phone to try.
+    case locked
 }
 
 /// One document type's extraction rules, versioned.

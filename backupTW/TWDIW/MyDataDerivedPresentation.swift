@@ -8,6 +8,7 @@
 
 import CryptoKit
 import Foundation
+import PDFKit
 
 /// One original the vault holds, as the presenter needs it: which kind it is,
 /// its fingerprint, and a way to read its text only when actually chosen.
@@ -43,14 +44,60 @@ extension MyDataVaultArchive: MyDataVaultDocumentSource {
                 id: document.id,
                 documentTypeID: known?.id,
                 sha256: entry.sha256,
-                text: { [self] in
-                    let data = try MyDataVaultDocumentViewController.previewPDFData(id: document.id, archive: self)
-                    guard let text = MyDataDocumentParsers.text(ofPDF: data) else {
-                        throw MyDataDocumentParserError.notThisDocument
-                    }
-                    return text
-                })
+                text: { [self] in try MyDataVaultText.extract(id: document.id, archive: self) })
         }
+    }
+}
+
+/// The text of a vault original, whatever container MyData delivered it in:
+/// a PDF's text layer, a CSV or TXT decoded as UTF-8 (Big5 as the fallback
+/// the older agency exports use), or the first such entry inside a ZIP.
+enum MyDataVaultText {
+
+    static func extract(id: String, archive: MyDataVaultArchive, password: String? = nil) throws -> String {
+        guard let original = archive.originalURL(id: id) else {
+            throw MyDataDocumentParserError.notThisDocument
+        }
+        let format = archive.entry(id: id)?.fileExtension.lowercased() ?? ""
+        let data: Data
+        let ext: String
+        switch format {
+        case "zip":
+            let scratch = MyDataScratch(directory: FileManager.default.temporaryDirectory
+                .appendingPathComponent("MyDataVaultText-\(UUID().uuidString)", isDirectory: true))
+            defer { try? scratch.purge() }
+            let zip = try scratch.downloadDestination()
+            try Data(contentsOf: original).write(to: zip, options: [.atomic, .completeFileProtectionUnlessOpen])
+            (data, ext) = try scratch.readableEntry(fromArchiveAt: zip)
+        default:
+            data = try Data(contentsOf: original)
+            ext = format
+        }
+        return try text(of: data, fileExtension: ext, password: password)
+    }
+
+    /// MyData seals its PDFs with the holder's national ID number. The stored
+    /// national ID card carries that number, so a phone that has made its
+    /// national ID can open its own vault documents without asking; a caller
+    /// may also pass the number explicitly (the DEBUG parse preview does).
+    static func text(of data: Data, fileExtension: String, password: String? = nil) throws -> String {
+        if fileExtension == "pdf" || data.starts(with: Array("%PDF".utf8)) {
+            guard let pdf = PDFDocument(data: data) else { throw MyDataDocumentParserError.notThisDocument }
+            if pdf.isLocked {
+                let candidates = [password, StoredNationalID.load()?.claims.first { $0.key == "unifiedNo" }?.value]
+                    .compactMap { $0 }.filter { !$0.isEmpty }
+                guard candidates.contains(where: { pdf.unlock(withPassword: $0) || pdf.unlock(withPassword: $0.uppercased()) }) else {
+                    throw MyDataDocumentParserError.locked
+                }
+            }
+            let text = (0..<pdf.pageCount).compactMap { pdf.page(at: $0)?.string }.joined(separator: "\n")
+            guard !text.isEmpty else { throw MyDataDocumentParserError.notThisDocument }
+            return text
+        }
+        if let utf8 = String(data: data, encoding: .utf8) { return utf8 }
+        let big5 = CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(CFStringEncodings.big5.rawValue))
+        if let text = String(data: data, encoding: String.Encoding(rawValue: big5)) { return text }
+        throw MyDataDocumentParserError.notThisDocument
     }
 }
 
@@ -110,14 +157,25 @@ enum MyDataDerivedPresenter {
         guard let parser = MyDataDocumentParsers.parser(for: type.documentTypeID) else {
             throw OID4VPResponseError.noMatchingCredential
         }
-        // The first original of the right kind. Two originals of one kind is a
-        // replace-in-progress; the archive keeps one per id, so this is one.
-        guard let document = try source.derivableDocuments()
-            .first(where: { $0.documentTypeID == type.documentTypeID }) else {
-            throw OID4VPResponseError.sourceDocumentUnavailable
+        // The original of the right kind: by its registered id or display name
+        // first, then — for an import the vault could not name — by what its
+        // own first page says. Only untyped originals are opened for that, and
+        // only until one matches; the archive keeps one original per id.
+        let documents = try source.derivableDocuments()
+        var document = documents.first(where: { $0.documentTypeID == type.documentTypeID })
+        var text: String?
+        if document == nil {
+            for candidate in documents where candidate.documentTypeID == nil {
+                guard let candidateText = try? candidate.text(),
+                      MyDataDocumentRegistry.knownDocument(in: candidateText)?.id == type.documentTypeID else { continue }
+                document = candidate
+                text = candidateText
+                break
+            }
         }
+        guard let document else { throw OID4VPResponseError.sourceDocumentUnavailable }
         let parsed: MyDataParsedDocument
-        do { parsed = try parser.parse(text: try document.text()) }
+        do { parsed = try parser.parse(text: try text ?? document.text()) }
         catch let error as MyDataDocumentParserError { throw OID4VPResponseError.sourceDocumentUnreadable(error) }
         catch { throw OID4VPResponseError.sourceDocumentUnreadable(.notThisDocument) }
 

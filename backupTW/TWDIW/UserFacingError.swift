@@ -238,6 +238,9 @@ enum UserFacingError {
                 return String(format: NSLocalizedString(
                     "The stored original has no “%@” field this answer needs, so nothing was presented.",
                     comment: "vp response error: original missing field"), label)
+            case .locked:
+                return NSLocalizedString("The stored original is password-protected. Create your national ID in Bonds first so it can be opened with your ID number.",
+                                         comment: "vp response error: original locked")
             }
         case .ruleMissing:
             return NSLocalizedString("This verifier did not say what it wants to check, so nothing was presented.",

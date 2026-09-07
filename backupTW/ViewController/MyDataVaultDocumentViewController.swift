@@ -280,29 +280,62 @@ final class MyDataVaultDocumentViewController: UICollectionViewController {
         }
     }
 
-    private func showParsePreview() {
+    private func showParsePreview(password: String? = nil) {
         #if DEBUG
-        let typeID = MyDataDocumentRegistry.lookup(id: documentID)?.id
-            ?? document?.entry?.displayName.flatMap(MyDataDocumentRegistry.knownDocument(in:))?.id
-        var message: String
+        // Diagnostics first, verdict second: when the parser refuses, the alert
+        // has to say *which* step refused — no type, no text layer, or text
+        // without the expected labels — or the phone tells us nothing useful.
+        var lines: [String] = []
+        var text: String?
+        let entry = document?.entry
+        lines.append("file: \(entry?.fileExtension ?? "?") · name: \(entry?.displayName ?? "-")")
+        var typeID = MyDataDocumentRegistry.lookup(id: documentID)?.id
+            ?? entry?.displayName.flatMap(MyDataDocumentRegistry.knownDocument(in:))?.id
         do {
+            let extracted = try MyDataVaultText.extract(id: documentID, archive: archive, password: password)
+            text = extracted
+            lines.append("text: \(extracted.count) chars, \(extracted.components(separatedBy: .newlines).count) lines")
+            if typeID == nil {
+                typeID = MyDataDocumentRegistry.knownDocument(in: extracted)?.id
+                lines.append("type sniffed from text: \(typeID ?? "none")")
+            } else {
+                lines.append("type: \(typeID!)")
+            }
             guard let typeID, let parser = MyDataDocumentParsers.parser(for: typeID) else {
                 throw MyDataDocumentParserError.notThisDocument
             }
-            let data = try Self.previewPDFData(id: documentID, archive: archive)
-            guard let text = MyDataDocumentParsers.text(ofPDF: data) else {
-                throw MyDataDocumentParserError.notThisDocument
-            }
-            let parsed = try parser.parse(text: text)
-            message = parsed.parserVersion + "\n"
-                + parsed.fields.sorted { $0.key < $1.key }.map { "\($0.key) = \($0.value)" }.joined(separator: "\n")
+            let parsed = try parser.parse(text: extracted)
+            lines.append("✓ " + parsed.parserVersion)
+            lines.append(contentsOf: parsed.fields.sorted { $0.key < $1.key }.map { "\($0.key) = \($0.value)" })
             if !parsed.periods.isEmpty {
-                message += "\nperiods: " + parsed.periods.map { "\($0.start)…\($0.end ?? "now")" }.joined(separator: ", ")
+                lines.append("periods: " + parsed.periods.map { "\($0.start)…\($0.end ?? "now")" }.joined(separator: ", "))
             }
+        } catch MyDataDocumentParserError.locked {
+            // Sealed with the national ID number and none is stored: ask, retry.
+            let prompt = UIAlertController(title: "[DEBUG] PDF is locked",
+                                           message: lines.joined(separator: "\n") + "\nEnter the ID number (the PDF password).",
+                                           preferredStyle: .alert)
+            prompt.addTextField { $0.placeholder = "A123456789"; $0.autocapitalizationType = .allCharacters }
+            prompt.addAction(UIAlertAction(title: "Retry", style: .default) { [weak self, weak prompt] _ in
+                self?.showParsePreview(password: prompt?.textFields?.first?.text)
+            })
+            prompt.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
+            present(prompt, animated: true)
+            return
         } catch {
-            message = "parse failed: \(error)"
+            lines.append("✗ \(error)")
         }
-        let alert = UIAlertController(title: "[DEBUG] Parsed fields", message: message, preferredStyle: .alert)
+        if let text {
+            lines.append("— first 300 chars —")
+            lines.append(String(text.prefix(300)))
+        }
+        let message = lines.joined(separator: "\n")
+        let alert = UIAlertController(title: "[DEBUG] Parse the original", message: message, preferredStyle: .alert)
+        if let text {
+            alert.addAction(UIAlertAction(title: "Copy full text", style: .default) { _ in
+                UIPasteboard.general.string = message + "\n\n===== FULL TEXT =====\n" + text
+            })
+        }
         alert.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: ""), style: .default))
         present(alert, animated: true)
         #endif

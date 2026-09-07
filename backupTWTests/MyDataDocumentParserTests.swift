@@ -10,7 +10,9 @@
 //
 
 import Foundation
+import PDFKit
 import Testing
+import UIKit
 @testable import backupTW
 
 @Suite("MyData 文字欄位：日期、數字、標籤")
@@ -216,5 +218,48 @@ struct MyDataDerivedCredentialTypeTests {
             #expect(type.vct.hasPrefix("https://bonds-tw.github.io/vct/"))
         }
         #expect(Set(MyDataDerivedCredentialType.all.map(\.vct)).count == MyDataDerivedCredentialType.all.count)
+    }
+}
+
+@Suite("保險箱原檔文字抽取：PDF 密碼、CSV 編碼")
+struct MyDataVaultTextTests {
+
+    private func pdf(text: String, password: String?) -> Data {
+        let format = UIGraphicsPDFRendererFormat()
+        let renderer = UIGraphicsPDFRenderer(bounds: CGRect(x: 0, y: 0, width: 400, height: 300), format: format)
+        let data = renderer.pdfData { context in
+            context.beginPage()
+            text.draw(at: CGPoint(x: 20, y: 20), withAttributes: [.font: UIFont.systemFont(ofSize: 14)])
+        }
+        guard let password, let document = PDFDocument(data: data) else { return data }
+        let sealed = NSMutableData()
+        // PDFKit writes the encrypted copy through a temporary file.
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".pdf")
+        document.write(to: url, withOptions: [.userPasswordOption: password, .ownerPasswordOption: password])
+        sealed.append(try! Data(contentsOf: url))
+        try? FileManager.default.removeItem(at: url)
+        return sealed as Data
+    }
+
+    @Test func aPlainPDFYieldsItsText() throws {
+        let text = try MyDataVaultText.text(of: pdf(text: "所得年度：113", password: nil), fileExtension: "pdf")
+        #expect(text.contains("所得年度"))
+    }
+
+    @Test func aSealedPDFOpensWithThePasswordAndRefusesWithout() throws {
+        let sealed = pdf(text: "所得年度：113", password: "A123456789")
+        #expect(try PDFDocument(data: sealed)?.isLocked == true)
+        #expect(throws: MyDataDocumentParserError.locked) {
+            _ = try MyDataVaultText.text(of: sealed, fileExtension: "pdf")
+        }
+        let text = try MyDataVaultText.text(of: sealed, fileExtension: "pdf", password: "a123456789")
+        #expect(text.contains("所得年度"))
+    }
+
+    @Test func aCSVIsDecodedAsUTF8ThenBig5() throws {
+        #expect(try MyDataVaultText.text(of: Data("所得年度,113".utf8), fileExtension: "csv") == "所得年度,113")
+        let big5 = CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(CFStringEncodings.big5.rawValue))
+        let bytes = try #require("所得年度,113".data(using: String.Encoding(rawValue: big5)))
+        #expect(try MyDataVaultText.text(of: bytes, fileExtension: "csv") == "所得年度,113")
     }
 }

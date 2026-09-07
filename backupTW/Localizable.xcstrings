@@ -10058,6 +10058,16 @@
         }
       }
     },
+    "The stored original is password-protected. Create your national ID in Bonds first so it can be opened with your ID number.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保險箱裡的原檔有密碼保護。請先在有備而來建立國民身分證，App 才能用你的統一編號打開它。"
+          }
+        }
+      }
+    },
     "The synthetic package was not imported": {
       "localizations": {
         "zh-Hant": {
