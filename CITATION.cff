@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+message: "If you refer to this project in research or policy work, please cite it as below."
+title: "Bonds-iOS (有備而來): a third-party Taiwan citizen digital identity wallet for iOS"
+type: software
+authors:
+  - name: "Bonds.tw contributors"
+  - family-names: "Mashbean"
+    email: "mashbean@gmail.com"
+repository-code: "https://github.com/bonds-tw/Bonds-iOS"
+url: "https://pro.mashbean.net/?series=ready-digital-government"
+license: Apache-2.0
+keywords:
+  - digital-identity
+  - digital-wallet
+  - verifiable-credentials
+  - openid4vci
+  - openid4vp
+  - sd-jwt
+  - zero-knowledge
+  - taiwan
+  - ios
+abstract: >-
+  An open-source iOS wallet that holds Taiwan's national identity, government
+  credentials from the official TWDIW wallet ecosystem, MyData files, and
+  official electronic documents, and can present or verify them online,
+  offline, and with zero-knowledge proofs. Built as a working prototype to
+  test what an ideal citizen wallet should look like, with field reports
+  published alongside the code.
