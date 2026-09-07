@@ -281,5 +281,18 @@ struct StoredNationalID: Equatable {
         (["email", "email_address", "mail"], NSLocalizedString("Email address", comment: "field label")),
         (["organisation", "organization", "org_name", "company"], NSLocalizedString("Organisation", comment: "field label")),
         (["role", "job_title", "position"], NSLocalizedString("Role", comment: "field label")),
+        // Keys the 請收下卡片 sandbox issuer writes on its everyday test cards
+        // (docs/sandbox-issuer.md): student, employee, library and membership
+        // cards, plus the driving-licence conditions column.
+        (["license_conditions", "licence_conditions"], NSLocalizedString("Licence conditions", comment: "field label")),
+        (["student_id", "studentid", "student_number"], NSLocalizedString("Student ID", comment: "field label")),
+        (["school", "university", "institution"], NSLocalizedString("School", comment: "field label")),
+        (["department", "dept", "faculty", "division"], NSLocalizedString("Department", comment: "field label; a school department or a workplace department")),
+        (["enrollment_year", "enrolment_year", "admission_year"], NSLocalizedString("Enrolment year", comment: "field label")),
+        (["employee_id", "employeeid", "staff_id", "staff_number"], NSLocalizedString("Employee ID", comment: "field label")),
+        (["card_number", "cardnumber", "card_no"], NSLocalizedString("Card number", comment: "field label")),
+        (["library", "branch"], NSLocalizedString("Library", comment: "field label")),
+        (["member_id", "memberid", "membership_number"], NSLocalizedString("Member ID", comment: "field label")),
+        (["tier", "membership_tier", "member_level", "level"], NSLocalizedString("Membership tier", comment: "field label")),
     ]
 }

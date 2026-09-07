@@ -1134,6 +1134,16 @@
         }
       }
     },
+    "Card number": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "證號"
+          }
+        }
+      }
+    },
     "Card type": {
       "localizations": {
         "zh-Hant": {
@@ -1543,6 +1553,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "已收合"
+          }
+        }
+      }
+    },
+    "Collect a test card from the sandbox issuer": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "從測試發卡站領取測試卡"
           }
         }
       }
@@ -2292,6 +2312,16 @@
         }
       }
     },
+    "Department": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "系所／部門"
+          }
+        }
+      }
+    },
     "Details": {
       "localizations": {
         "zh-Hant": {
@@ -2766,6 +2796,16 @@
         }
       }
     },
+    "Employee ID": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "員工編號"
+          }
+        }
+      }
+    },
     "Enable G2C development sandbox receiving?": {
       "localizations": {
         "zh-Hant": {
@@ -2832,6 +2872,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "服務端點"
+          }
+        }
+      }
+    },
+    "Enrolment year": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "入學學年度"
           }
         }
       }
@@ -4175,6 +4225,26 @@
         }
       }
     },
+    "Library": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "館別"
+          }
+        }
+      }
+    },
+    "Licence conditions": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "駕照條件"
+          }
+        }
+      }
+    },
     "Licence number": {
       "localizations": {
         "zh-Hant": {
@@ -4437,6 +4507,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "量測數據"
+          }
+        }
+      }
+    },
+    "Member ID": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "會員編號"
+          }
+        }
+      }
+    },
+    "Membership tier": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "會員等級"
           }
         }
       }
@@ -5533,6 +5623,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "開啟這張卡的申辦流程失敗，請再試一次。"
+          }
+        }
+      }
+    },
+    "Opens issuer.mashbean.net to create and collect a fictional test card. Development builds only.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "開啟 issuer.mashbean.net 建立並領取虛構的測試卡片。僅開發建置提供。"
           }
         }
       }
@@ -7055,6 +7155,16 @@
         }
       }
     },
+    "School": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "學校"
+          }
+        }
+      }
+    },
     "Sealed": {
       "localizations": {
         "zh-Hant": {
@@ -8073,6 +8183,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "保存至本機時間"
+          }
+        }
+      }
+    },
+    "Student ID": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "學號"
           }
         }
       }

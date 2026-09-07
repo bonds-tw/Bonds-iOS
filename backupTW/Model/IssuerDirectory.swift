@@ -88,7 +88,16 @@ enum IssuerDirectory {
             // what it is — a sandbox driving licence is a 駕照電子卡 issued by
             // 沙盒系統, not a card of unknown kind. Falls back to the readable type
             // when the inner kind is not one this table names.
-            return IssuerDescriptor(issuerName: "沙盒系統",
+            var sandboxName = "沙盒系統"
+            #if DEBUG
+            // The one sandbox a DEBUG build pins by DID gets its own name. This
+            // is still a lookup on an already-authenticated card: the gates only
+            // store a card whose `iss` equals the pinned DID (docs/sandbox-issuer.md).
+            if issuerDID == TWDIWIssuer.mashbeanSandbox.did {
+                sandboxName = TWDIWIssuer.mashbeanSandbox.displayName
+            }
+            #endif
+            return IssuerDescriptor(issuerName: sandboxName,
                                     cardKind: friendlyKind(type) ?? readableKind,
                                     trustSource: "沙盒/測試")
         }
@@ -160,6 +169,22 @@ enum IssuerDirectory {
         }
         if ["wallet_partner", "partner"].contains(where: lowercasedType.contains) {
             return "夥伴卡"
+        }
+        // The everyday kinds the 請收下卡片 sandbox issues (docs/sandbox-issuer.md):
+        // `sandbox_student_card`, `sandbox_employee_badge`, `sandbox_library_card`,
+        // `sandbox_membership_card`. Named here so a test card reads as the kind
+        // of card it imitates rather than as a readable-ised type string.
+        if lowercasedType.contains("student") {
+            return "學生證"
+        }
+        if ["employee", "staff", "badge"].contains(where: lowercasedType.contains) {
+            return "員工識別證"
+        }
+        if lowercasedType.contains("library") {
+            return "圖書借閱證"
+        }
+        if lowercasedType.contains("member") {
+            return "會員卡"
         }
         return nil
     }

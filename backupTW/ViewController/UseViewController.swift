@@ -46,6 +46,12 @@ class UseViewController: UICollectionViewController {
         static let verify = NSLocalizedString("Check someone else's document", comment: "")
         static let createAgeProof = NSLocalizedString("Create a private age proof", comment: "age proof")
         static let verifyAgeProof = NSLocalizedString("Check a private age proof", comment: "age proof")
+        #if DEBUG
+        // DEBUG only, like the trust exception it relies on: opens the 請收下卡片
+        // sandbox issuer so a development build can mint a fictional card and
+        // collect it here (docs/sandbox-issuer.md).
+        static let collectSandboxCard = NSLocalizedString("Collect a test card from the sandbox issuer", comment: "DEBUG-only row")
+        #endif
     }
 
     /// Recomputed on every appearance, not stored once at init.
@@ -130,7 +136,18 @@ class UseViewController: UICollectionViewController {
                                         "Needs a phone-number card. Apply for one above, and this becomes available.", comment: "pickup row, disabled reason"),
                                  isEnabled: hasTelecomCard)
 
-        return Section(title: title, items: [collect, applyTelecom, pickupBarcode])
+        var items = [collect, applyTelecom, pickupBarcode]
+        #if DEBUG
+        // The sandbox issuer's page makes the offer QR; scanning it lands in the
+        // same `collect` path above, through the same two gates. On the same
+        // phone, the page's deep link opens this app directly.
+        items.append(Item(image: UIImage(systemName: "testtube.2"),
+                          title: Row.collectSandboxCard,
+                          secondaryText: NSLocalizedString(
+                            "Opens issuer.mashbean.net to create and collect a fictional test card. Development builds only.",
+                            comment: "DEBUG-only row")))
+        #endif
+        return Section(title: title, items: items)
     }
 
     private static func hasTelecomCredential(in store: CredentialStore) -> Bool {
@@ -449,6 +466,15 @@ extension UseViewController {
         case Row.verifyAgeProof:
             navigationController?.pushViewController(
                 AgePredicateProofVerifierViewController(), animated: true)
+        #if DEBUG
+        case Row.collectSandboxCard:
+            // The page, preset to the 有備而來 wallet. The offer it makes comes
+            // back through `Row.collect` (scan) or the deep link (same phone).
+            if let base = TWDIWIssuer.mashbeanSandbox.issuerMetadataBaseURL,
+               let page = URL(string: base + "/?wallet=bonds") {
+                UIApplication.shared.open(page)
+            }
+        #endif
         default:
             break
         }
