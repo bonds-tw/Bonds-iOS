@@ -196,6 +196,7 @@ documents, integration plans, phase reports, and audits.
 |---|---|
 | [bonds-tw/bonds-signing-broker](https://github.com/bonds-tw/bonds-signing-broker) | App Attest-gated TW FidO signing broker that Release builds use (private while in UAT) |
 | [mashbean/twdiw-vp-verifier-lite](https://github.com/mashbean/twdiw-vp-verifier-lite) | One-click Cloudflare verifier for TWDIW presentations and Bonds ZK proofs; demo at [verifier.mashbean.net](https://verifier.mashbean.net) |
+| [mashbean/twdiw-vc-issuer-lite](https://github.com/mashbean/twdiw-vc-issuer-lite) | One-click Cloudflare test-card issuer for TWDIW-dialect credentials, its sister project; demo at [issuer.mashbean.net](https://issuer.mashbean.net). Bonds Debug builds pin its `did:key` as a sandbox exception; Release builds do not. |
 | [bonds-tw/bonds-tw.github.io](https://github.com/bonds-tw/bonds-tw.github.io) | Deep-link landing, TWDIW field notes, credential type metadata |
 | [moda-gov-tw/TWDIW-official-app](https://github.com/moda-gov-tw/TWDIW-official-app) | The official wallet this project interoperates with |
 | [ethereum/zkID](https://github.com/ethereum/zkID), [privacy-ethereum/openac-rsa-x509-swift](https://github.com/privacy-ethereum/openac-rsa-x509-swift) | Circuits and bindings for both zero-knowledge proofs |
