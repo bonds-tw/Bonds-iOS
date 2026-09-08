@@ -61,11 +61,12 @@ enum CredentialCollection {
             // DEBUG sandbox append: the demo issuer must not enter the book.
             IssuerNameBook.remember(trustList)
             #if DEBUG
-            // DEBUG only: let a development build collect from the demo sandbox,
-            // whose issuer host is not on the production trust list
-            // (docs/m52-live-collection-2026-08-26.md §七). Compiled out of
+            // DEBUG only: let a development build collect from the sandboxes,
+            // whose issuer hosts are not on the production trust list — the
+            // moda demo (docs/m52-live-collection-2026-08-26.md §七) and the
+            // 請收下卡片 test issuer (docs/sandbox-issuer.md). Compiled out of
             // Release entirely — a shipped wallet trusts the production list.
-            trustList.append(.sandboxDemo)
+            trustList.append(contentsOf: TWDIWIssuer.debugSandboxes)
             #endif
             let registryVerifier = TWDIWOnChainVerifier(session: .shared)
             let collector = OID4VCICollector(session: .shared,
@@ -73,10 +74,11 @@ enum CredentialCollection {
                                              verifyRegistry: { issuers in
                                                  var results = await registryVerifier.verify(issuers)
                                                  #if DEBUG
-                                                 // The demo registry is deliberately a separate trust domain
+                                                 // The sandboxes are deliberately separate trust domains
                                                  // with no production Arbitrum row. Keep the exception explicit,
                                                  // honest, and compiled out of Release.
-                                                 for issuer in issuers where issuer.did == TWDIWIssuer.sandboxDemo.did {
+                                                 let sandboxDIDs = Set(TWDIWIssuer.debugSandboxes.map(\.did))
+                                                 for issuer in issuers where sandboxDIDs.contains(issuer.did) {
                                                      results[issuer.did] = .developmentSandbox
                                                  }
                                                  #endif

@@ -105,10 +105,13 @@ enum OID4VPPresentation {
     static func verifierHosts(from fetchedList: [TWDIWIssuer]) -> Set<String> {
         var list = fetchedList
         #if DEBUG
-        // DEBUG only: a development build talks to the demo verifier, whose host
-        // is not on the production list — the mirror of the sandbox issuer
-        // collection appends (docs/m52-live-collection-2026-08-26.md §七).
-        list.append(.sandboxDemo)
+        // DEBUG only: a development build talks to the sandbox verifiers, whose
+        // hosts are not on the production list — the mirror of the sandbox
+        // issuer collection appends (docs/m52-live-collection-2026-08-26.md §七;
+        // docs/sandbox-issuer.md). The 請收下卡片 issuer signs its own OIDC4VP
+        // requests with the same did:key, so its host arrives here through the
+        // same entry that lets collection through.
+        list.append(contentsOf: TWDIWIssuer.debugSandboxes)
         #endif
         var hosts = Set(list.flatMap { issuer in
             [issuer.issuerMetadataBaseURL, issuer.serviceBaseURL]

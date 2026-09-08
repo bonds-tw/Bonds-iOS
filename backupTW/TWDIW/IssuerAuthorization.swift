@@ -419,5 +419,35 @@ extension TWDIWIssuer {
         issuerMetadataBaseURL: "https://issuer-oid4vci.wallet.gov.tw",
         serviceBaseURL: nil,
         reportsOnChainAnchor: false)
+
+    /// 「請收下卡片」— the independent sandbox issuer at `issuer.mashbean.net`
+    /// (github.com/mashbean/twdiw-vc-issuer-lite), added to the gate **only in
+    /// DEBUG**.
+    ///
+    /// It issues TWDIW-dialect SD-JWT cards with **fictional** data (six
+    /// everyday card types, six invented people) so a development build can
+    /// exercise the whole collect → present → verify loop without a real
+    /// issuer. It is not on the 數位發展部 trust list and never will be; this
+    /// entry is the wallet operator's explicit trust exception, not a bypass.
+    ///
+    /// The DID is the issuer's own `did:key` in the `jwk_jcs-pub` spelling, read
+    /// from `GET https://issuer.mashbean.net/api/issuer` on 2026-09-08. Every
+    /// card's `iss` must equal this string exactly (the post-issuance check in
+    /// `OID4VCICollector`), and the same DID signs the site's OIDC4VP requests,
+    /// so `verifierHosts` derives `issuer.mashbean.net` from this entry too.
+    /// A redeploy that recreates the Durable Object would mint a new key —
+    /// re-read the endpoint and update this pin.
+    static let mashbeanSandbox = TWDIWIssuer(
+        did: "did:key:z2dmzD81cgPx8Vki7JbuuMmFYrWPgYoytykUZ3eyqht1j9Kbo2Mi4LUgEfFf1SyPGTHyP82LZ2VH9F6RGYsDNMtC2cmEJqADsXXbhTn4USsdTCP6h1ePhtazrv4rczSJUEKxyU1zRSHe5h4fjVg8VQRygF8YafgjNXEDzB6bquD9DUf45A",
+        displayName: "請收下卡片 測試發卡站",
+        displayNameEnglish: "Please Take This Card (sandbox issuer)",
+        taxID: "00000000",
+        issuerMetadataBaseURL: "https://issuer.mashbean.net",
+        serviceBaseURL: nil,
+        reportsOnChainAnchor: false)
+
+    /// Every DEBUG-only issuer, in one place, so the collection gate, the
+    /// registry exception and the presentation host list cannot drift apart.
+    static let debugSandboxes: [TWDIWIssuer] = [.sandboxDemo, .mashbeanSandbox]
 }
 #endif
