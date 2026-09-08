@@ -60,28 +60,25 @@ enum CredentialCollection {
             // card faces can name a trust-listed issuer offline. Before the
             // DEBUG sandbox append: the demo issuer must not enter the book.
             IssuerNameBook.remember(trustList)
-            #if DEBUG
-            // DEBUG only: let a development build collect from the sandboxes,
-            // whose issuer hosts are not on the production trust list — the
-            // moda demo (docs/m52-live-collection-2026-08-26.md §七) and the
-            // 請收下卡片 test issuer (docs/sandbox-issuer.md). Compiled out of
-            // Release entirely — a shipped wallet trusts the production list.
-            trustList.append(contentsOf: TWDIWIssuer.debugSandboxes)
-            #endif
+            // The 請收下卡片 simulated-card issuer is trusted in every build; the
+            // moda demo joins it only in DEBUG (see `TWDIWIssuer.trustedSandboxes`
+            // and docs/sandbox-issuer.md). Neither is on the production list, so
+            // this is the one explicit sandbox exception — the gates below are not
+            // loosened for anyone else.
+            trustList.append(contentsOf: TWDIWIssuer.trustedSandboxes)
             let registryVerifier = TWDIWOnChainVerifier(session: .shared)
             let collector = OID4VCICollector(session: .shared,
                                              trustList: trustList,
                                              verifyRegistry: { issuers in
                                                  var results = await registryVerifier.verify(issuers)
-                                                 #if DEBUG
-                                                 // The sandboxes are deliberately separate trust domains
-                                                 // with no production Arbitrum row. Keep the exception explicit,
-                                                 // honest, and compiled out of Release.
-                                                 let sandboxDIDs = Set(TWDIWIssuer.debugSandboxes.map(\.did))
+                                                 // The sandboxes are separate trust domains with no
+                                                 // production Arbitrum row. Marking them keeps the
+                                                 // exception explicit and never calls a clearly-labelled
+                                                 // simulated card chain-verified.
+                                                 let sandboxDIDs = Set(TWDIWIssuer.trustedSandboxes.map(\.did))
                                                  for issuer in issuers where sandboxDIDs.contains(issuer.did) {
                                                      results[issuer.did] = .developmentSandbox
                                                  }
-                                                 #endif
                                                  return results
                                              },
                                              keyring: .app(),

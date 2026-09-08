@@ -89,14 +89,14 @@ enum IssuerDirectory {
             // 沙盒系統, not a card of unknown kind. Falls back to the readable type
             // when the inner kind is not one this table names.
             var sandboxName = "沙盒系統"
-            #if DEBUG
-            // The one sandbox a DEBUG build pins by DID gets its own name. This
-            // is still a lookup on an already-authenticated card: the gates only
-            // store a card whose `iss` equals the pinned DID (docs/sandbox-issuer.md).
+            // The one sandbox pinned by DID gets its own name. This is still a
+            // lookup on an already-authenticated card: the gates only store a
+            // card whose `iss` equals the pinned DID (docs/sandbox-issuer.md).
+            // Available in every build now that the 請收下卡片 issuer ships in
+            // Release.
             if issuerDID == TWDIWIssuer.mashbeanSandbox.did {
                 sandboxName = TWDIWIssuer.mashbeanSandbox.displayName
             }
-            #endif
             return IssuerDescriptor(issuerName: sandboxName,
                                     cardKind: friendlyKind(type) ?? readableKind,
                                     trustSource: "沙盒/測試")

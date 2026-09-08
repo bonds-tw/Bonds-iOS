@@ -186,8 +186,13 @@ class HomeViewController: UICollectionViewController {
         }
         // Unrecognised cards ride with the government group, as the old list did:
         // this app mints exactly one self-issued document, so a blob matching
-        // neither shape is likelier collected than ours gone wrong.
-        let government = rows?.filter { $0.source == .twdiw || $0.source == .unrecognised }
+        // neither shape is likelier collected than ours gone wrong. Simulated
+        // (sandbox) cards are pulled out into their own group below the vault, so
+        // a 模擬卡 is never shown among real government cards.
+        let government = rows?.filter {
+            ($0.source == .twdiw || $0.source == .unrecognised) && !$0.isSimulated
+        }
+        let simulated = rows?.filter { $0.source == .twdiw && $0.isSimulated }
 
         let officialDocumentState: OfficialDocumentInboxState
         if let inbox = makeOfficialDocumentInbox() {
@@ -207,11 +212,21 @@ class HomeViewController: UICollectionViewController {
             officialDocumentState = .unavailable
         }
 
-        return [nationalIDSection(rows: nationalID, store: store),
-                governmentSection(rows: government, store: store),
-                myDataSection(documents: archived, legacyCredentials: legacyVaultCredentials),
-                myDataActionsSection(documentCount: archived?.count),
-                officialDocumentSection(state: officialDocumentState)]
+        var sections: [(HomeSection, [HomeItem])] = [
+            nationalIDSection(rows: nationalID, store: store),
+            governmentSection(rows: government, store: store),
+            myDataSection(documents: archived, legacyCredentials: legacyVaultCredentials),
+            myDataActionsSection(documentCount: archived?.count),
+        ]
+        // 模擬卡 sit in their own group directly below the MyData vault block, so a
+        // simulated card is never mistaken for a real government one. The section
+        // appears only when such a card is held, so a phone with none looks
+        // exactly as before (and the existing section indices are unchanged).
+        if let simulated, !simulated.isEmpty {
+            sections.append(simulatedSection(rows: simulated, store: store))
+        }
+        sections.append(officialDocumentSection(state: officialDocumentState))
+        return sections
     }
 
     /// The national ID this app builds, kept with the 「更新備份」 control that
@@ -281,6 +296,20 @@ class HomeViewController: UICollectionViewController {
                     comment: "")))])
         }
 
+        return (section, rows.map { row in
+            .card(id: row.id, content: WalletCardFactory.credentialContent(row: row, store: store))
+        })
+    }
+
+    /// 模擬卡 collected from the 請收下卡片 demo issuer. A plain vertical list of
+    /// clearly-labelled test cards, kept apart from the real government cards
+    /// above and sitting below the MyData vault. Present only when at least one
+    /// is held — the empty state is simply the group's absence — so it never
+    /// needs an empty-state card, and a phone with none renders exactly as before.
+    private func simulatedSection(rows: [CardInventoryRow],
+                                  store: CredentialStoring?) -> (HomeSection, [HomeItem]) {
+        let section = HomeSection(id: "simulated",
+                                  title: NSLocalizedString("Simulated cards", comment: "home card group"))
         return (section, rows.map { row in
             .card(id: row.id, content: WalletCardFactory.credentialContent(row: row, store: store))
         })

@@ -236,12 +236,12 @@ struct OID4VCICollector {
                                                        blockNumber: blockNumber,
                                                        transactionHash: transactionHash,
                                                        verifiedAt: now())
-            #if DEBUG
             case .developmentSandbox:
-                // The sandbox remains collectable in development, but it does
-                // not acquire evidence that could authorize an offline check.
+                // A sandbox issuer (請收下卡片 in every build, the moda demo in
+                // DEBUG) is a separate trust domain with no production Arbitrum
+                // record, so it is collectable but acquires no offline-trust
+                // snapshot that could later be replayed as verified.
                 snapshot = nil
-            #endif
             default:
                 throw OID4VCICollectionError.issuedCredentialDoesNotVerify
             }
