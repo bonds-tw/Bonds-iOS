@@ -51,6 +51,14 @@ class HomeViewController: UICollectionViewController {
     private static let governmentSectionID = "government"
     private static let myDataSectionID = "mydata"
     private static let myDataActionsSectionID = "mydata-actions"
+    /// 模擬卡 (sandbox) group — stacks and collapses exactly like the government
+    /// group, its cards being the same credential faces.
+    private static let simulatedSectionID = "simulated"
+    /// The groups whose two-or-more cards rest as a collapsible 疊卡: the
+    /// government group, the MyData vault, and the simulated-card group. One
+    /// list so the stack layout, the header chevron, the expansion reset and the
+    /// tap routing cannot disagree about who stacks.
+    private static let stackableSectionIDs = [governmentSectionID, myDataSectionID, simulatedSectionID]
     private static let vaultDisplayNameRepairKey = "mydata.vault.display-name-repair.v1"
     /// How much of each peeking card's top shows — a sliver (一角) with its name,
     /// Apple-Wallet style. The full 「hero」 card sits at the bottom of the stack and
@@ -308,7 +316,7 @@ class HomeViewController: UICollectionViewController {
     /// needs an empty-state card, and a phone with none renders exactly as before.
     private func simulatedSection(rows: [CardInventoryRow],
                                   store: CredentialStoring?) -> (HomeSection, [HomeItem]) {
-        let section = HomeSection(id: "simulated",
+        let section = HomeSection(id: Self.simulatedSectionID,
                                   title: NSLocalizedString("Simulated cards", comment: "home card group"))
         return (section, rows.map { row in
             .card(id: row.id, content: WalletCardFactory.credentialContent(row: row, store: store))
@@ -483,7 +491,7 @@ class HomeViewController: UICollectionViewController {
         let sections = snapshot.sectionIdentifiers
         guard index < sections.count else { return nil }
         let id = sections[index].id
-        guard [Self.governmentSectionID, Self.myDataSectionID].contains(id),
+        guard Self.stackableSectionIDs.contains(id),
               !expandedStackSections.contains(id) else { return nil }
         let cardCount = snapshot.itemIdentifiers(inSection: sections[index]).filter {
             if case .card = $0 { return true } else { return false }
@@ -563,7 +571,7 @@ class HomeViewController: UICollectionViewController {
     /// nothing at all for any other header. The single source of truth shared by
     /// the header registration and `refreshGovernmentHeader`.
     private func configureDisclosure(on header: CustomHeaderView, sectionID: String) {
-        guard [Self.governmentSectionID, Self.myDataSectionID].contains(sectionID),
+        guard Self.stackableSectionIDs.contains(sectionID),
               sectionIsStackable(sectionID) else {
             header.setDisclosure(expanded: nil)   // also clears onTap
             return
@@ -947,14 +955,15 @@ class HomeViewController: UICollectionViewController {
         // state, so a later repopulation (a card scanned back in) defaults to
         // collapsed rather than inheriting a stale 「expanded」 from before it
         // dropped below two cards.
-        for sectionID in [Self.governmentSectionID, Self.myDataSectionID]
+        for sectionID in Self.stackableSectionIDs
             where !sectionIsStackable(sectionID) {
             expandedStackSections.remove(sectionID)
         }
         // The header persists across a rebuild without its registration re-running,
         // so push the current disclosure state (or none) onto it directly.
-        refreshStackHeader(sectionID: Self.governmentSectionID)
-        refreshStackHeader(sectionID: Self.myDataSectionID)
+        for sectionID in Self.stackableSectionIDs {
+            refreshStackHeader(sectionID: sectionID)
+        }
     }
 }
 

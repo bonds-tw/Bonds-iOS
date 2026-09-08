@@ -80,4 +80,27 @@ struct SimulatedCardHomeTests {
         #expect(after.collectionView.numberOfItems(inSection: 1) == 1) // government: the real card only
         #expect(after.collectionView.numberOfItems(inSection: 4) == 1) // simulated: the sandbox card only
     }
+
+    /// Two or more simulated cards rest as a collapsible 疊卡, exactly like the
+    /// government group: mounting lays out the collapsed stack (all cards still
+    /// in the section, overlapped), and expanding then collapsing the group
+    /// round-trips without disturbing the section count.
+    @Test func twoSimulatedCardsStackAndCollapseLikeGovernmentCards() throws {
+        let store = MemoryStore()
+        let archive = try tempVault()
+        try store.save(jws: TWDIWFixture().withCredentialType("sandbox_driverlicense_car_v1"), id: "sim-1")
+        try store.save(jws: TWDIWFixture().withCredentialType("sandbox_membership_card_v1"), id: "sim-2")
+        let (controller, _) = mountedHome(store: store, archive: archive)
+
+        #expect(controller.collectionView.numberOfSections == 6)
+        // Both cards belong to the group; the collapsed stack overlaps them
+        // rather than dropping any.
+        #expect(controller.collectionView.numberOfItems(inSection: 4) == 2)
+        // Tapping the collapsed stack expands it, and collapsing it again leaves
+        // the same two cards — the stack path runs for the simulated section.
+        controller.setStackExpanded(true, sectionID: "simulated", animated: false)
+        controller.collectionView.layoutIfNeeded()
+        controller.setStackExpanded(false, sectionID: "simulated", animated: false)
+        #expect(controller.collectionView.numberOfItems(inSection: 4) == 2)
+    }
 }
