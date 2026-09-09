@@ -6,6 +6,16 @@
 	<string>$(BONDS_SIGNING_BROKER_BASE_URL)</string>
 	<key>CFBundleDisplayName</key>
 	<string>Bond</string>
+	<!-- Export compliance: the app's only confidentiality encryption is standard
+	     HTTPS/TLS, and its own cryptography (P-256 ECDSA signatures, SD-JWT holder
+	     binding, the zero-knowledge age proof) is authentication and digital
+	     signatures, not data encryption. Both fall under the US EAR exemptions, so
+	     the app uses no non-exempt encryption. Declaring it here lets every
+	     TestFlight/App Store upload skip the per-build export-compliance prompt.
+	     If a future feature adds non-standard confidentiality encryption, remove
+	     this key (or set it to true) and answer the ASC questions instead. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

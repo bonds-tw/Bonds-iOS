@@ -393,42 +393,25 @@ extension TWDIWIssuer {
     }
 }
 
-#if DEBUG
 extension TWDIWIssuer {
 
-    /// The `demo.wallet.gov.tw` sandbox issuer, added to the gate **only in
-    /// DEBUG**.
+    /// 「請收下卡片」— the independent simulated-card issuer at
+    /// `issuer.mashbean.net` (github.com/mashbean/twdiw-vc-issuer-lite).
+    /// **Trusted in every build, Release included** (decision 2026-09-09).
     ///
-    /// Measured 2026-08-26 (`docs/m52-live-collection-2026-08-26.md` §七): the
-    /// demo issuer host `issuer-oid4vci.wallet.gov.tw` is **not** among the 43
-    /// production entries of `frontend.wallet.gov.tw/api/did`. Sandbox and
-    /// production are separate trust domains, so a wallet that gates on the
-    /// production list refuses demo collection — correctly, for a release
-    /// build.
+    /// It issues TWDIW-dialect SD-JWT cards carrying only **fictional** data
+    /// (six everyday card types, six invented people). Shipping the trust for it
+    /// is what lets the wallet be exercised end to end — collect → show → check
+    /// — without a real 自然人憑證 or a real government card, which is the only
+    /// way a TestFlight tester or an App Review reviewer reaches any of it. Its
+    /// cards are labelled 模擬卡 and shown in their own home section, never mixed
+    /// with real cards.
     ///
-    /// This entry exists so a DEBUG build can act as the **one** party that
-    /// dereferences a demo offer (the role a QR scan plays for the official
-    /// app), which is the only way to measure whether the token endpoint
-    /// accepts `client_id=tw.bonds.backupTW`. It is compiled out of Release
-    /// entirely — a shipped wallet trusts the production list and nothing else.
-    static let sandboxDemo = TWDIWIssuer(
-        did: "did:key:sandbox-demo",
-        displayName: "數位憑證皮夾 Demo 沙盒",
-        displayNameEnglish: "TWDIW Demo Sandbox",
-        taxID: "00000000",
-        issuerMetadataBaseURL: "https://issuer-oid4vci.wallet.gov.tw",
-        serviceBaseURL: nil,
-        reportsOnChainAnchor: false)
-
-    /// 「請收下卡片」— the independent sandbox issuer at `issuer.mashbean.net`
-    /// (github.com/mashbean/twdiw-vc-issuer-lite), added to the gate **only in
-    /// DEBUG**.
-    ///
-    /// It issues TWDIW-dialect SD-JWT cards with **fictional** data (six
-    /// everyday card types, six invented people) so a development build can
-    /// exercise the whole collect → present → verify loop without a real
-    /// issuer. It is not on the 數位發展部 trust list and never will be; this
-    /// entry is the wallet operator's explicit trust exception, not a bypass.
+    /// This is a narrow, explicit trust exception for one clearly-marked
+    /// sandbox, not a bypass: it is not on the 數位發展部 trust list and never
+    /// will be, and every card it issues still passes both collection gates
+    /// (host membership, then credential-issuer match) and the `cnf`↔device-key
+    /// binding check before it is stored.
     ///
     /// The DID is the issuer's own `did:key` in the `jwk_jcs-pub` spelling, read
     /// from `GET https://issuer.mashbean.net/api/issuer` on 2026-09-08. Every
@@ -446,8 +429,45 @@ extension TWDIWIssuer {
         serviceBaseURL: nil,
         reportsOnChainAnchor: false)
 
-    /// Every DEBUG-only issuer, in one place, so the collection gate, the
-    /// registry exception and the presentation host list cannot drift apart.
-    static let debugSandboxes: [TWDIWIssuer] = [.sandboxDemo, .mashbeanSandbox]
+    #if DEBUG
+    /// The `issuer-oid4vci.wallet.gov.tw` moda demo sandbox — **DEBUG only**.
+    ///
+    /// Measured 2026-08-26 (`docs/m52-live-collection-2026-08-26.md` §七): the
+    /// demo issuer host is **not** among the production entries of
+    /// `frontend.wallet.gov.tw/api/did`. It exists so a development build can act
+    /// as the one party that dereferences a demo offer (the role a QR scan plays
+    /// for the official app). Compiled out of Release entirely.
+    static let sandboxDemo = TWDIWIssuer(
+        did: "did:key:sandbox-demo",
+        displayName: "數位憑證皮夾 Demo 沙盒",
+        displayNameEnglish: "TWDIW Demo Sandbox",
+        taxID: "00000000",
+        issuerMetadataBaseURL: "https://issuer-oid4vci.wallet.gov.tw",
+        serviceBaseURL: nil,
+        reportsOnChainAnchor: false)
+    #endif
+
+    /// Every sandbox issuer this build trusts, in one place so the collection
+    /// list, the registry exception and the presentation host list cannot drift
+    /// apart. The 請收下卡片 simulated-card issuer in every build; the moda demo
+    /// only in DEBUG.
+    static var trustedSandboxes: [TWDIWIssuer] {
+        #if DEBUG
+        [.mashbeanSandbox, .sandboxDemo]
+        #else
+        [.mashbeanSandbox]
+        #endif
+    }
+
+    /// Whether a stored, already-verified credential is a simulated (sandbox)
+    /// card, for grouping it apart from real cards on the home screen. Keyed on
+    /// the pinned sandbox issuer DID, or a `sandbox`-marked credential type —
+    /// deliberately **not** the broader `demo`/`example` needles `IssuerDirectory`
+    /// uses for naming, so the production `…_demo_drivinglicense_…` government
+    /// fixture is never misfiled as a simulated card. Pure, so it is tested
+    /// without a store.
+    static func isSimulatedCredential(issuerDID: String, credentialType: String) -> Bool {
+        trustedSandboxes.contains { $0.did == issuerDID }
+            || credentialType.lowercased().contains("sandbox")
+    }
 }
-#endif

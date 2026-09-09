@@ -11,9 +11,10 @@ enum TWDIWOnChainVerification: Hashable, Sendable {
     case notAnchored
     case mismatch
     case unavailable
-    /// The official demo issuer is a separate trust domain and has no
-    /// production Arbitrum record. Only DEBUG collection code can create this
-    /// result; keeping it distinct avoids calling a sandbox bypass verified.
+    /// A sandbox issuer is a separate trust domain with no production Arbitrum
+    /// record. The 請收下卡片 simulated-card issuer carries this in every build;
+    /// the moda demo, only in DEBUG. Kept distinct so a clearly-labelled sandbox
+    /// card is never called chain-verified.
     case developmentSandbox
 
     var authorisesCollection: Bool {

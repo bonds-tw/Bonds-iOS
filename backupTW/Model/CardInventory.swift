@@ -34,6 +34,12 @@ struct CardInventoryRow: Equatable, Sendable {
     let detail: String
 
     let state: State
+
+    /// A simulated (sandbox) card, e.g. one collected from the 請收下卡片 demo
+    /// issuer. `false` for every real card and for a card that could not be
+    /// read. The home screen groups these apart so a test card is never mistaken
+    /// for a real one; see `TWDIWIssuer.isSimulatedCredential`.
+    var isSimulated: Bool = false
 }
 
 /// Turns the credential store into the home screen's list.
@@ -219,7 +225,9 @@ enum CardInventory {
             id: id, source: .twdiw, capability: .twdiw,
             title: CardCapability.twdiw.name,
             detail: detail,
-            state: expired ? .expired : .usable)
+            state: expired ? .expired : .usable,
+            isSimulated: TWDIWIssuer.isSimulatedCredential(issuerDID: credential.issuerDID,
+                                                           credentialType: credential.credentialType))
     }
 
     /// # A TWDIW card has no name a person can read

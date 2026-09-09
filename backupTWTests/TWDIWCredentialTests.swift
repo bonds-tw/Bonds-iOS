@@ -298,6 +298,11 @@ struct TWDIWFixture {
                 (try? DIDKey.did(fromP256PublicKeyX963: issuerPrivateKey.publicKey.x963Representation)))
     }
 
+    /// A card whose `vc.type[1]` is `type`, signed correctly — for asserting how
+    /// a given card kind is grouped or named. Unlike `withTamperedType`, the
+    /// signature stays valid, so the reader accepts it.
+    func withCredentialType(_ type: String) -> String { build(credentialType: type) }
+
     /// Edits `vc.type[1]` after the signature is computed, so every field still
     /// reads correctly and only the signature disagrees.
     func withTamperedType() -> String {
@@ -321,6 +326,7 @@ struct TWDIWFixture {
                        algorithm: String = "ES256",
                        digestAlgorithm: String = "sha-256",
                        issuerDIDOverride: String? = nil,
+                       credentialType: String = TWDIWFixture.credentialType,
                        omittingExpiry: Bool = false) -> String {
         let header: [String: Any] = [
             "jku": jku, "kid": "key-1", "typ": "vc+sd-jwt", "alg": algorithm,
@@ -337,7 +343,7 @@ struct TWDIWFixture {
             "cnf": ["jwk": (try? JSONSerialization.jsonObject(with: holderJWK)) as Any],
             "vc": [
                 "@context": ["https://www.w3.org/2018/credentials/v1"],
-                "type": ["VerifiableCredential", Self.credentialType],
+                "type": ["VerifiableCredential", credentialType],
                 "credentialStatus": [
                     "type": "StatusList2021Entry",
                     "id": "\(Self.statusListURL)#35",

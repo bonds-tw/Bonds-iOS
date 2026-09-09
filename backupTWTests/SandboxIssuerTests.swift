@@ -47,7 +47,7 @@ struct SandboxIssuerTests {
         guard case .byReference(let fetchURL) = try CredentialOfferLink.parse(scanned: Self.scannedQR) else {
             Issue.record("not byReference"); return
         }
-        let verdict = IssuerAuthorization.authorise(fetchURL: fetchURL, against: TWDIWIssuer.debugSandboxes)
+        let verdict = IssuerAuthorization.authorise(fetchURL: fetchURL, against: TWDIWIssuer.trustedSandboxes)
         guard case .allowed(let issuers, let host) = verdict else {
             Issue.record("gate 1 refused: \(verdict)")
             return
@@ -93,7 +93,7 @@ struct SandboxIssuerTests {
         for fetchURL in ["https://issuer.mashbean.net.evil.example/api/offer/x",
                          "https://evil-issuer.mashbean.net/api/offer/x",
                          "http://issuer.mashbean.net/api/offer/x"] {
-            let verdict = IssuerAuthorization.authorise(fetchURL: fetchURL, against: TWDIWIssuer.debugSandboxes)
+            let verdict = IssuerAuthorization.authorise(fetchURL: fetchURL, against: TWDIWIssuer.trustedSandboxes)
             guard case .refused = verdict else {
                 Issue.record("gate 1 allowed \(fetchURL): \(verdict)")
                 continue
@@ -125,5 +125,29 @@ struct SandboxIssuerTests {
             let hit = StoredNationalID.fieldLabelTable.first { $0.keys.contains(key) }
             #expect(hit != nil, "no label row for \(key)")
         }
+    }
+
+    /// The sandbox ships in Release: the simulated-card issuer is trusted in
+    /// every build, and only the moda demo is DEBUG-gated. This is the decision
+    /// that lets a TestFlight tester exercise the wallet without a real card.
+    @Test func theSimulatedIssuerIsTrustedInEveryBuild() {
+        #expect(TWDIWIssuer.trustedSandboxes.contains { $0.did == TWDIWIssuer.mashbeanSandbox.did })
+        #expect(OID4VPPresentation.verifierHosts(from: []).contains("issuer.mashbean.net"))
+    }
+
+    /// Grouping detection: a card is 模擬卡 when its issuer is the pinned sandbox
+    /// DID or its type is `sandbox`-marked, and — crucially — the production
+    /// `…_demo_drivinglicense_…` government fixture is NOT caught, so real cards
+    /// are never misfiled into the simulated group.
+    @Test func simulatedDetectionCatchesSandboxCardsButNotRealOnes() {
+        #expect(TWDIWIssuer.isSimulatedCredential(issuerDID: TWDIWIssuer.mashbeanSandbox.did,
+                                                  credentialType: "sandbox_driverlicense_car_v1"))
+        #expect(TWDIWIssuer.isSimulatedCredential(issuerDID: "did:key:zStranger",
+                                                  credentialType: "sandbox_membership_card_v1"))
+        // A real government fixture: neither the pinned DID nor a sandbox type.
+        #expect(!TWDIWIssuer.isSimulatedCredential(issuerDID: "did:key:zRealGov",
+                                                   credentialType: "00000000_demo_drivinglicense_202504251418"))
+        #expect(!TWDIWIssuer.isSimulatedCredential(issuerDID: "did:key:zRealGov",
+                                                   credentialType: "2-16-886-101-20003-20008-20082_driverlicense_car_1211"))
     }
 }

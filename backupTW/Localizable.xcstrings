@@ -1557,12 +1557,22 @@
         }
       }
     },
-    "Collect a test card from the sandbox issuer": {
+    "Collect a simulated card": {
       "localizations": {
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "從測試發卡站領取測試卡"
+            "value": "領取模擬卡"
+          }
+        }
+      }
+    },
+    "Collect the driver's licence card": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "領取駕照電子卡"
           }
         }
       }
@@ -5607,6 +5617,16 @@
         }
       }
     },
+    "Open the demo site to collect a card.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "開啟示範網站，收下卡片"
+          }
+        }
+      }
+    },
     "Open the protected copy stored on this phone.": {
       "localizations": {
         "zh-Hant": {
@@ -5623,16 +5643,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "開啟這張卡的申辦流程失敗，請再試一次。"
-          }
-        }
-      }
-    },
-    "Opens issuer.mashbean.net to create and collect a fictional test card. Development builds only.": {
-      "localizations": {
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "開啟 issuer.mashbean.net 建立並領取虛構的測試卡片。僅開發建置提供。"
           }
         }
       }
@@ -7134,6 +7144,16 @@
         }
       }
     },
+    "Scan the driving-licence QR from 監理服務網; you log in there and the card returns here.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "掃描監理服務網的駕照 QR Code，登入後把駕照收進皮夾"
+          }
+        }
+      }
+    },
     "Scan their document": {
       "localizations": {
         "zh-Hant": {
@@ -7901,6 +7921,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "簽章會完成，但永遠回不到這個 App。"
+          }
+        }
+      }
+    },
+    "Simulated cards": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "模擬卡"
           }
         }
       }

@@ -46,12 +46,16 @@ class UseViewController: UICollectionViewController {
         static let verify = NSLocalizedString("Check someone else's document", comment: "")
         static let createAgeProof = NSLocalizedString("Create a private age proof", comment: "age proof")
         static let verifyAgeProof = NSLocalizedString("Check a private age proof", comment: "age proof")
-        #if DEBUG
-        // DEBUG only, like the trust exception it relies on: opens the 請收下卡片
-        // sandbox issuer so a development build can mint a fictional card and
-        // collect it here (docs/sandbox-issuer.md).
-        static let collectSandboxCard = NSLocalizedString("Collect a test card from the sandbox issuer", comment: "DEBUG-only row")
-        #endif
+        // The real driving-licence electronic card. Not in the app-openable
+        // 「申請新卡」 catalogue (only the three telecom cards are), so it is
+        // collected by scanning the 監理服務網 card QR, which opens the login
+        // web page the same scan path already handles (docs/sandbox-issuer.md,
+        // ScanToCollect).
+        static let collectDriverLicence = NSLocalizedString("Collect the driver's licence card", comment: "online row")
+        // The 請收下卡片 simulated-card issuer. Ships in Release: it is the demo
+        // path that makes the wallet exercisable without a real Taiwan digital
+        // wallet (docs/sandbox-issuer.md).
+        static let collectSimulatedCard = NSLocalizedString("Collect a simulated card", comment: "online row")
     }
 
     /// Recomputed on every appearance, not stored once at init.
@@ -136,18 +140,25 @@ class UseViewController: UICollectionViewController {
                                         "Needs a phone-number card. Apply for one above, and this becomes available.", comment: "pickup row, disabled reason"),
                                  isEnabled: hasTelecomCard)
 
-        var items = [collect, applyTelecom, pickupBarcode]
-        #if DEBUG
-        // The sandbox issuer's page makes the offer QR; scanning it lands in the
-        // same `collect` path above, through the same two gates. On the same
-        // phone, the page's deep link opens this app directly.
-        items.append(Item(image: UIImage(systemName: "testtube.2"),
-                          title: Row.collectSandboxCard,
-                          secondaryText: NSLocalizedString(
-                            "Opens issuer.mashbean.net to create and collect a fictional test card. Development builds only.",
-                            comment: "DEBUG-only row")))
-        #endif
-        return Section(title: title, items: items)
+        // The driving-licence card: scan the 監理服務網 card QR, then log in on
+        // the page that opens; the card returns here. Same scan path as
+        // 「領卡」, given a purpose-named entrance so a real user knows where to
+        // get their licence.
+        let driverLicence = Item(image: UIImage(systemName: "car"),
+                                 title: Row.collectDriverLicence,
+                                 secondaryText: NSLocalizedString(
+                                    "Scan the driving-licence QR from 監理服務網; you log in there and the card returns here.",
+                                    comment: "online row"))
+
+        // The simulated-card demo issuer. Its page makes the offer QR; scanning
+        // it lands in the same `collect` path above, through the same two gates.
+        // On the same phone, the page's deep link opens this app directly.
+        let simulated = Item(image: UIImage(systemName: "testtube.2"),
+                             title: Row.collectSimulatedCard,
+                             secondaryText: NSLocalizedString(
+                                "Open the demo site to collect a card.", comment: "online row"))
+
+        return Section(title: title, items: [collect, applyTelecom, driverLicence, pickupBarcode, simulated])
     }
 
     private static func hasTelecomCredential(in store: CredentialStore) -> Bool {
@@ -466,15 +477,17 @@ extension UseViewController {
         case Row.verifyAgeProof:
             navigationController?.pushViewController(
                 AgePredicateProofVerifierViewController(), animated: true)
-        #if DEBUG
-        case Row.collectSandboxCard:
-            // The page, preset to the 有備而來 wallet. The offer it makes comes
-            // back through `Row.collect` (scan) or the deep link (same phone).
+        case Row.collectDriverLicence:
+            // Scans the 監理服務網 card QR; the resolver opens its login page in
+            // an embedded webview and the returned offer runs the same two gates.
+            ScanToCollect.begin(on: navigationController)
+        case Row.collectSimulatedCard:
+            // The demo page, preset to the 有備而來 wallet. The offer it makes
+            // comes back through `Row.collect` (scan) or the deep link (same phone).
             if let base = TWDIWIssuer.mashbeanSandbox.issuerMetadataBaseURL,
                let page = URL(string: base + "/?wallet=bonds") {
                 UIApplication.shared.open(page)
             }
-        #endif
         default:
             break
         }
