@@ -13,17 +13,23 @@ private actor SigningBrokerStubTransport: SigningBrokerTransport {
     private(set) var startedTimeLimit: Int?
     private(set) var polledToken: String?
 
+    private(set) var startedTransport: TWFidOTransport?
+
     func start(idNumber: String,
                intent: SigningBrokerIntent,
+               transport: TWFidOTransport,
                timeLimit: Int) async throws -> SigningBrokerStart {
         startedIDNumber = idNumber
         startedIntent = intent
+        startedTransport = transport
         startedTimeLimit = timeLimit
         return SigningBrokerStart(
             sessionToken: "opaque-session-token",
             transactionID: "broker-transaction",
-            deepLink: URL(string: "mobilemoica://moica.moi.gov.tw/a2a/verifySign")!,
-            expiresAt: Date(timeIntervalSince1970: 1_800_000_600))
+            expiresAt: Date(timeIntervalSince1970: 1_800_000_600),
+            delivery: transport == .push
+                ? .push
+                : .appToApp(URL(string: "mobilemoica://moica.moi.gov.tw/a2a/verifySign")!))
     }
 
     func poll(sessionToken: String) async throws -> TWFidOSignResult? {
@@ -124,5 +130,23 @@ struct SigningBrokerTests {
         #expect(throws: SigningBrokerIntentError.malformedCredentialTBS) {
             _ = try SigningBrokerIntent.make(from: .credentialTBS("arbitrary-data"))
         }
+    }
+
+    @Test func brokerSessionSupportsPushTransportWithoutDeepLink() async throws {
+        let transport = SigningBrokerStubTransport()
+        let session = SigningBrokerSignSession(transport: transport, preferredTransport: .push)
+        let consent = consent()
+
+        let started = try await session.begin(
+            idNumber: "A123456789",
+            hint: "ignored hint",
+            signing: .officialDocumentConsent(consent.signingDescriptor),
+            timeLimit: 600)
+        let result = try await session.poll(handle: started.handle)
+
+        #expect(started.delivery == .push)
+        #expect(started.handle.transactionID == "broker-transaction")
+        #expect(await transport.startedTransport == .push)
+        #expect(result?.cert == "certificate")
     }
 }

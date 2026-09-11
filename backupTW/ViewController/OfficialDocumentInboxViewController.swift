@@ -34,12 +34,14 @@ final class OfficialDocumentInboxViewController: UITableViewController {
     private var sandboxRegistrationUnavailable = false
     #endif
 
+    @MainActor
     init(archive: OfficialDocumentInboxArchive,
-         makeSigning: @escaping () -> OfficialDocumentSigning? = {
-             OfficialDocumentSigningAssembly.make()
-         }) {
+         makeSigning: (() -> OfficialDocumentSigning?)? = nil) {
         self.archive = archive
-        self.makeSigning = makeSigning
+        self.makeSigning = makeSigning ?? {
+            OfficialDocumentSigningAssembly.make(
+                transport: TWFidOTransportSelection.automatic())
+        }
         super.init(style: .insetGrouped)
     }
 

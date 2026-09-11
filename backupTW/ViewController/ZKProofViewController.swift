@@ -688,9 +688,12 @@ final class ZKProofViewController: UICollectionViewController {
         // `canOpenURL` answers 「is something installed」 and `open` answers
         // 「did the handoff happen」, and only the second is the question at this
         // point in the flow.
-        guard let signer = ZKProofRunAssembly.makeSigner(idNumber: idNumber, open: { url in
-            await UIApplication.shared.open(url)
-        }) else {
+        guard let signer = ZKProofRunAssembly.makeSigner(
+            idNumber: idNumber,
+            transport: TWFidOTransportSelection.automatic(),
+            open: { url in
+                await UIApplication.shared.open(url)
+            }) else {
             presentFailure(NSLocalizedString(
                 "This build can't request a signature: it has no credentials for the digital certificate service.",
                 comment: ""))

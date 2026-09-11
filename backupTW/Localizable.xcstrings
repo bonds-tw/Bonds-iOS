@@ -1,6 +1,86 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "An unexpected issue occurred. Please try again.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "發生未預期的問題，請再試一次。"
+          }
+        }
+      }
+    },
+    "Caught error": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "捕捉到的錯誤"
+          }
+        }
+      }
+    },
+    "Copy details": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "複製詳細資料"
+          }
+        }
+      }
+    },
+    "Confirm the request in 行動自然人憑證 on this iPhone or another bound device.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在這支 iPhone 或其他已綁定裝置上的行動自然人憑證確認要求。"
+          }
+        }
+      }
+    },
+    "Send error report": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "傳送錯誤報告"
+          }
+        }
+      }
+    },
+    "Sensitive diagnostic details are excluded from this report.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此報告不包含敏感診斷詳細資料。"
+          }
+        }
+      }
+    },
+    "The signing service returned an invalid transport response.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "簽章服務回傳了無效的傳輸方式。"
+          }
+        }
+      }
+    },
+    "The request timed out. Please try again in a moment.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "要求逾時，請稍後再試。"
+          }
+        }
+      }
+    },
     "%.1f s": {
       "localizations": {
         "zh-Hant": {

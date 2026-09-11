@@ -9,6 +9,17 @@ import Foundation
 import Testing
 @testable import backupTW
 
+@MainActor
+struct TWFidOTransportSelectionTests {
+    @Test func installedMobileMoicaUsesAppToApp() {
+        #expect(TWFidOTransportSelection.automatic(canOpenMobileMoica: { _ in true }) == .appToApp)
+    }
+
+    @Test func missingMobileMoicaUsesPush() {
+        #expect(TWFidOTransportSelection.automatic(canOpenMobileMoica: { _ in false }) == .push)
+    }
+}
+
 // MARK: - Stubs
 
 /// Records what `begin` was asked for. A class so a non-mutating protocol
@@ -33,17 +44,28 @@ private struct StubSignSession: TWFidOSignSession, @unchecked Sendable {
     let recorder: SignSessionRecorder
     /// One entry per poll; runs off the end as `.pending`.
     let pollScript: [PollOutcome]
+    let returnDeepLink: Bool
+
+    init(recorder: SignSessionRecorder, pollScript: [PollOutcome], returnDeepLink: Bool = true) {
+        self.recorder = recorder
+        self.pollScript = pollScript
+        self.returnDeepLink = returnDeepLink
+    }
 
     func begin(idNumber: String,
                hint: String,
                signing: TWFidOSigningTarget,
-               timeLimit: Int) async throws -> (handle: TWFidOSignHandle, deepLink: URL) {
+               timeLimit: Int) async throws -> TWFidOSignStart {
         recorder.beginCount += 1
         recorder.signing = signing
-        return (.local(TWFidOTicket(spTicket: "sp.ticket",
-                                   transactionID: "TXN-1",
-                                   spTicketID: "TKT-1")),
-                URL(string: "mobilemoica://moica.moi.gov.tw/a2a/verifySign")!)
+        let handle = TWFidOSignHandle.local(TWFidOTicket(spTicket: "sp.ticket",
+                                                         transactionID: "TXN-1",
+                                                         spTicketID: "TKT-1"))
+        return TWFidOSignStart(
+            handle: handle,
+            delivery: returnDeepLink
+                ? .appToApp(URL(string: "mobilemoica://moica.moi.gov.tw/a2a/verifySign")!)
+                : .push)
     }
 
     func poll(handle: TWFidOSignHandle) async throws -> TWFidOSignResult? {
@@ -57,14 +79,18 @@ private struct StubSignSession: TWFidOSignSession, @unchecked Sendable {
     }
 }
 
-private struct StubCallbacks: TWFidOCallbackWaiting, @unchecked Sendable {
+private final class StubCallbacks: TWFidOCallbackWaiting, @unchecked Sendable {
+    var waitCount = 0
+    var cancelCount = 0
+
     func waitForCallback(transactionID: String) async {
+        waitCount += 1
         // Never fires. The sleep arm of the race is what advances the loop, and
         // a callback that resolved immediately would make every timeout test
         // spin instead of expire.
         try? await Task.sleep(nanoseconds: .max)
     }
-    func cancelWait(transactionID: String) async {}
+    func cancelWait(transactionID: String) async { cancelCount += 1 }
 }
 
 private enum StubAnchorError: Error { case unavailable }
@@ -88,12 +114,14 @@ struct CredentialIssuanceTests {
     private func issuance(recorder: SignSessionRecorder,
                           pollScript: [PollOutcome] = [.success(signResult())],
                           open: @escaping @Sendable (URL) async -> Bool = { _ in true },
+                          callbacks: StubCallbacks = StubCallbacks(),
+                          returnDeepLink: Bool = true,
                           timeLimit: Int = 600,
                           clock: @escaping @Sendable () -> Date = { CredentialIssuanceTests.issuedAt })
         -> CredentialIssuance {
         CredentialIssuance(
-            session: StubSignSession(recorder: recorder, pollScript: pollScript),
-            callbacks: StubCallbacks(),
+            session: StubSignSession(recorder: recorder, pollScript: pollScript, returnDeepLink: returnDeepLink),
+            callbacks: callbacks,
             open: open,
             timeLimit: timeLimit,
             pollInterval: 0,
@@ -205,6 +233,40 @@ struct CredentialIssuanceTests {
         // 內政部 has already seen the request, so the holder should be told the
         // app is missing rather than that nothing happened.
         #expect(recorder.beginCount == 1)
+    }
+
+    @Test func pushTransportDoesNotRequireCertificateAppInstalled() async throws {
+        let recorder = SignSessionRecorder()
+        let callbacks = StubCallbacks()
+        var openCount = 0
+        let issuance = issuance(recorder: recorder,
+                                pollScript: [.pending, .success(Self.signResult())],
+                                open: { _ in openCount += 1; return false },
+                                callbacks: callbacks,
+                                returnDeepLink: false)
+
+        var reachedDownstreamAnchor = false
+        do {
+            _ = try await issuance.issue(Self.model, subjectDID: Self.subjectDID)
+            Issue.record("Push issuance unexpectedly succeeded with an unavailable test anchor")
+        } catch let error as CredentialIssuanceError {
+            switch error {
+            case .signingFailed(let message):
+                reachedDownstreamAnchor = true
+                #expect(message == NSLocalizedString(
+                    "The digital certificate service could not be reached.", comment: ""))
+            default:
+                Issue.record("Push issuance stopped before the downstream anchor")
+            }
+        } catch {
+            Issue.record("Push issuance returned an unexpected error")
+        }
+        #expect(reachedDownstreamAnchor)
+        #expect(recorder.beginCount == 1)
+        #expect(recorder.pollCount == 2)
+        #expect(openCount == 0)
+        #expect(callbacks.waitCount == 0)
+        #expect(callbacks.cancelCount == 0)
     }
 
     // MARK: Transport failures while polling

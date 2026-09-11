@@ -187,14 +187,11 @@ enum ScanToCollect {
             UIAccessibility.post(notification: .announcement, argument: NSLocalizedString(
                 "Card added to your wallet.", comment: "collection success announcement"))
         case .failed(let message):
-            let alert = UIAlertController(
+            ErrorCatcher.present(
                 title: NSLocalizedString("Digital wallet card collection", comment: ""),
-                message: message,
-                preferredStyle: .alert)
-            alert.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: ""), style: .default))
-            var presenter: UIViewController? = navigationController
-            while let presented = presenter?.presentedViewController { presenter = presented }
-            (presenter ?? navigationController?.topViewController)?.present(alert, animated: true)
+                shortError: message,
+                on: navigationController
+            )
         }
     }
 }

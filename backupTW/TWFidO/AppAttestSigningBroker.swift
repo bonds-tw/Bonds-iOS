@@ -374,6 +374,7 @@ actor AppAttestSigningBrokerTransport: SigningBrokerTransport {
 
     func start(idNumber: String,
                intent: SigningBrokerIntent,
+               transport: TWFidOTransport,
                timeLimit: Int) async throws -> SigningBrokerStart {
         guard TWFidOClient.allowedTimeLimits.contains(timeLimit) else {
             throw SigningBrokerClientError.invalidTimeLimit(timeLimit)
@@ -383,6 +384,7 @@ actor AppAttestSigningBrokerTransport: SigningBrokerTransport {
         do {
             let result = try await startSerialized(idNumber: idNumber,
                                                    intent: intent,
+                                                   transport: transport,
                                                    requestID: requestID)
             await gate.release()
             return result
@@ -390,6 +392,15 @@ actor AppAttestSigningBrokerTransport: SigningBrokerTransport {
             await gate.release()
             throw error
         }
+    }
+
+    func start(idNumber: String,
+               intent: SigningBrokerIntent,
+               timeLimit: Int) async throws -> SigningBrokerStart {
+        try await start(idNumber: idNumber,
+                        intent: intent,
+                        transport: .appToApp,
+                        timeLimit: timeLimit)
     }
 
     func poll(sessionToken: String) async throws -> TWFidOSignResult? {
@@ -444,13 +455,15 @@ actor AppAttestSigningBrokerTransport: SigningBrokerTransport {
 
     private func startSerialized(idNumber: String,
                                  intent: SigningBrokerIntent,
+                                 transport: TWFidOTransport,
                                  requestID: String) async throws -> SigningBrokerStart {
         try await withKeyRecovery { keyID in
             let intentValue = try Self.intentValue(intent)
             let business: [String: Any] = [
                 "id_number": idNumber,
                 "intent": intentValue,
-                "key_id": keyID
+                "key_id": keyID,
+                "transport": transport.rawValue
             ]
             let challenge = try await assertionChallenge(keyID: keyID)
             let clientData = try Self.canonicalJSON([
@@ -468,16 +481,60 @@ actor AppAttestSigningBrokerTransport: SigningBrokerTransport {
             body["assertion_object"] = assertion.base64EncodedString()
             let response: StartResponse = try await post(path: Self.startPath, body: body)
             guard Self.validSessionToken(response.sessionToken),
-                  let deepLink = URL(string: response.deepLink),
-                  let transactionID = Self.transactionID(from: deepLink),
                   let expiresAt = Self.parseDate(response.expiresAt),
                   expiresAt > now() else {
                 throw SigningBrokerClientError.invalidResponse
             }
+            let deepLink: URL?
+            if let rawDeepLink = response.deepLink {
+                guard let parsed = URL(string: rawDeepLink) else {
+                    throw SigningBrokerClientError.invalidResponse
+                }
+                deepLink = parsed
+            } else {
+                deepLink = nil
+            }
+
+            let transactionID: String
+            switch transport {
+            case .appToApp:
+                // An app-to-app start is usable only with a valid MOICA deep
+                // link. The body ID is optional for compatibility, but when
+                // present it must bind to the exact ID encoded in rtn_val.
+                guard let deepLink,
+                      let deepLinkTransactionID = Self.transactionID(from: deepLink) else {
+                    throw SigningBrokerClientError.invalidResponse
+                }
+                if let bodyTransactionID = response.transactionID {
+                    guard Self.validTransactionID(bodyTransactionID),
+                          bodyTransactionID == deepLinkTransactionID else {
+                        throw SigningBrokerClientError.invalidResponse
+                    }
+                }
+                transactionID = deepLinkTransactionID
+            case .push:
+                // Push is intentionally callback-free. Any deep link in a push
+                // response is a cross-transport response and fails closed.
+                guard deepLink == nil,
+                      let bodyTransactionID = response.transactionID,
+                      Self.validTransactionID(bodyTransactionID) else {
+                    throw SigningBrokerClientError.invalidResponse
+                }
+                transactionID = bodyTransactionID
+            }
+            let delivery: TWFidOSignDelivery
+            switch transport {
+            case .appToApp:
+                guard let deepLink else { throw SigningBrokerClientError.invalidResponse }
+                delivery = .appToApp(deepLink)
+            case .push:
+                guard deepLink == nil else { throw SigningBrokerClientError.invalidResponse }
+                delivery = .push
+            }
             return SigningBrokerStart(sessionToken: response.sessionToken,
                                       transactionID: transactionID,
-                                      deepLink: deepLink,
-                                      expiresAt: expiresAt)
+                                      expiresAt: expiresAt,
+                                      delivery: delivery)
         }
     }
 
@@ -768,14 +825,20 @@ actor AppAttestSigningBrokerTransport: SigningBrokerTransport {
         guard deepLink.scheme?.lowercased() == "mobilemoica",
               let encoded = URLComponents(url: deepLink, resolvingAgainstBaseURL: false)?
                 .queryItems?.first(where: { $0.name == "rtn_val" })?.value,
-              !encoded.isEmpty, encoded.utf8.count <= 512,
+              !encoded.isEmpty, encoded.utf8.count <= 1024,
               let data = base64URLData(encoded),
               let value = String(data: data, encoding: .utf8),
-              !value.isEmpty, value.utf8.count <= 256,
-              value.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }) else {
+              validTransactionID(value) else {
             return nil
         }
         return value
+    }
+
+    private static func validTransactionID(_ value: String) -> Bool {
+        !value.isEmpty && value.utf8.count <= 256
+            && value.unicodeScalars.allSatisfy {
+                !CharacterSet.controlCharacters.contains($0)
+            }
     }
 
     private static func isDeviceCheck(_ error: Error, code: DCError.Code) -> Bool {
@@ -815,11 +878,13 @@ private struct VerificationResponse: Decodable {
 
 private struct StartResponse: Decodable {
     let sessionToken: String
-    let deepLink: String
+    let transactionID: String?
+    let deepLink: String?
     let expiresAt: String
 
     enum CodingKeys: String, CodingKey {
         case sessionToken = "session_token"
+        case transactionID = "transaction_id"
         case deepLink = "deep_link"
         case expiresAt = "expires_at"
     }

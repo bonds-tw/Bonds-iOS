@@ -1484,7 +1484,7 @@ private final class Locked<Value>: @unchecked Sendable {
 private struct FakeSignSession: TWFidOSignSession {
     let log: CallLog
     var ticket = TWFidOTicket(spTicket: "t", transactionID: "tx", spTicketID: "id")
-    var deepLink = URL(string: "mobilemoica://moica.moi.gov.tw/a2a/verifySign")!
+    var deepLink: URL? = URL(string: "mobilemoica://moica.moi.gov.tw/a2a/verifySign")!
     var beginFailure: Error?
     /// One entry per poll: `nil` means "the holder has not finished yet".
     var pollResults: [TWFidOSignResult?] = []
@@ -1493,7 +1493,7 @@ private struct FakeSignSession: TWFidOSignSession {
     func begin(idNumber: String,
                hint: String,
                signing: TWFidOSigningTarget,
-               timeLimit: Int) async throws -> (handle: TWFidOSignHandle, deepLink: URL) {
+               timeLimit: Int) async throws -> TWFidOSignStart {
         log.record("begin")
         // Recorded rather than stored, because the protocol's method is
         // non-mutating and this stub is a value type. What it pins is that the
@@ -1501,7 +1501,9 @@ private struct FakeSignSession: TWFidOSignSession {
         // a per-run TBS here would silently destroy nullifier stability.
         log.record("signing:" + signing.toBeSigned)
         if let beginFailure { throw beginFailure }
-        return (.local(ticket), deepLink)
+        return TWFidOSignStart(
+            handle: .local(ticket),
+            delivery: deepLink.map(TWFidOSignDelivery.appToApp) ?? .push)
     }
 
     func poll(handle: TWFidOSignHandle) async throws -> TWFidOSignResult? {
@@ -1568,11 +1570,15 @@ private func makeSigner(session: FakeSignSession,
     -> TWFidOHolderSigner {
     // Time advances by five seconds per reading, so a deadline is reached in a
     // bounded number of polls without any real waiting.
-    TWFidOHolderSigner(
+    let openLog = session.log
+    return TWFidOHolderSigner(
         idNumber: "A123456789",
         session: session,
         callbacks: callbacks,
-        open: { _ in opens },
+        open: { _ in
+            if opens { openLog.record("open") }
+            return opens
+        },
         timeLimit: timeLimit,
         pollInterval: 0,
         now: { Date(timeIntervalSince1970: 0).addingTimeInterval(Double(clock.next()) * 5) },
@@ -1582,6 +1588,25 @@ private func makeSigner(session: FakeSignSession,
 
 @Suite("TW FidO signing")
 struct TWFidOHolderSignerTests {
+
+    @Test("push delivery polls without opening or waiting for a callback")
+    func pushDeliveryDoesNotUseLocalAppOrCallback() async throws {
+        let log = CallLog()
+        let session = FakeSignSession(log: log,
+                                      deepLink: nil,
+                                      pollResults: [nil, signResult])
+        let inputs = try await makeSigner(
+            session: session,
+            callbacks: FakeCallbacks(log: log),
+            validate: { _ in })
+            .sign(challenge: Fixture.challenge)
+
+        #expect(inputs.certificateBase64 == Fixture.certificateBase64)
+        #expect(log.count("open") == 0)
+        #expect(log.count("waitForCallback") == 0)
+        #expect(log.count("cancelWait") == 0)
+        #expect(log.count("poll") == 2)
+    }
 
     @Test("polls until the holder approves, then builds the proving inputs")
     func pollsUntilApproved() async throws {

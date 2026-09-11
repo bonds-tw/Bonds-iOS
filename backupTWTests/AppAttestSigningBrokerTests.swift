@@ -239,11 +239,13 @@ struct AppAttestSigningBrokerTests {
         #expect(startBody["request_id"] as? String == "018f6c7e-1234-7123-8123-123456789abc")
         #expect(startBody["id_number"] as? String == "A123456789")
         #expect((startBody["intent"] as? [String: Any])?["type"] as? String == "zk_holding_proof_v1")
+        #expect(startBody["transport"] as? String == "app_to_app")
 
         let business: [String: Any] = [
             "id_number": "A123456789",
             "intent": ["type": "zk_holding_proof_v1"],
-            "key_id": brokerKeyID
+            "key_id": brokerKeyID,
+            "transport": "app_to_app"
         ]
         let businessHash = SHA256.hash(data: try AppAttestSigningBrokerTransport.canonicalJSON(business)).hex
         let expectedClientData = try AppAttestSigningBrokerTransport.canonicalJSON([
@@ -256,6 +258,48 @@ struct AppAttestSigningBrokerTests {
         ])
         let assertionCall = try #require(await appAttest.assertionCalls.first)
         #expect(assertionCall.clientDataHash == Data(SHA256.hash(data: expectedClientData)))
+    }
+
+    @Test func pushTransportSucceedsWithoutDeepLink() async throws {
+        let appAttest = StubAppAttestService(
+            assertions: [.success(Data("start-assertion".utf8)),
+                         .success(Data("poll-assertion".utf8))])
+        let store = MemoryAppAttestKeyStore()
+        let sender = StubBrokerSender([
+            response(["challenge": attestationChallenge, "expires_at": brokerExpiry]),
+            response(["registered": true], status: 201),
+            response(["challenge": assertionChallenge, "expires_at": brokerExpiry]),
+            response([
+                "session_token": "bst1.1.opaque.push",
+                "transaction_id": "push-transaction-456",
+                "expires_at": brokerExpiry,
+                "reused": false
+            ]),
+            response(["challenge": assertionChallenge, "expires_at": brokerExpiry]),
+            response([
+                "status": "complete",
+                "certificate": Data("certificate".utf8).base64EncodedString(),
+                "signed_response": Data("signature".utf8).base64EncodedString()
+            ])
+        ])
+        let transport = try makeTransport(appAttest: appAttest, store: store, sender: sender)
+
+        let start = try await transport.start(
+            idNumber: "A123456789",
+            intent: SigningBrokerIntent(type: .zkHoldingProofV1, tbs: nil, consent: nil),
+            transport: .push,
+            timeLimit: 600)
+        #expect(start.sessionToken == "bst1.1.opaque.push")
+        #expect(start.transactionID == "push-transaction-456")
+        #expect(start.delivery == .push)
+
+        let result = try #require(try await transport.poll(sessionToken: start.sessionToken))
+        #expect(Data(base64Encoded: result.cert) == Data("certificate".utf8))
+        #expect(Data(base64Encoded: result.signedResponse) == Data("signature".utf8))
+
+        let exchanges = await sender.exchanges
+        let startBody = try json(exchanges[3].body)
+        #expect(startBody["transport"] as? String == "push")
     }
 
     @Test func retriesAppleServerUnavailableWithTheSameKeyChallengeAndHash() async throws {
@@ -510,6 +554,55 @@ struct AppAttestSigningBrokerTests {
         }
     }
 
+    @Test func pushResponseWithDeepLinkIsRejectedFailClosed() async throws {
+        let transport = try makeRegisteredStartTransport(response: [
+            "session_token": "bst1.1.cross-transport",
+            "transaction_id": "push-transaction",
+            "deep_link": brokerDeepLink(transactionID: "push-transaction"),
+            "expires_at": brokerExpiry
+        ])
+
+        await #expect(throws: SigningBrokerClientError.invalidResponse) {
+            _ = try await transport.start(
+                idNumber: "A123456789",
+                intent: SigningBrokerIntent(type: .zkHoldingProofV1, tbs: nil, consent: nil),
+                transport: .push,
+                timeLimit: 600)
+        }
+    }
+
+    @Test func pushResponseRequiresValidBodyTransactionID() async throws {
+        let transport = try makeRegisteredStartTransport(response: [
+            "session_token": "bst1.1.missing-transaction",
+            "expires_at": brokerExpiry
+        ])
+
+        await #expect(throws: SigningBrokerClientError.invalidResponse) {
+            _ = try await transport.start(
+                idNumber: "A123456789",
+                intent: SigningBrokerIntent(type: .zkHoldingProofV1, tbs: nil, consent: nil),
+                transport: .push,
+                timeLimit: 600)
+        }
+    }
+
+    @Test func appToAppRejectsBodyTransactionIDThatDoesNotMatchDeepLink() async throws {
+        let transport = try makeRegisteredStartTransport(response: [
+            "session_token": "bst1.1.mismatched-transaction",
+            "transaction_id": "different-transaction",
+            "deep_link": brokerDeepLink(transactionID: "link-transaction"),
+            "expires_at": brokerExpiry
+        ])
+
+        await #expect(throws: SigningBrokerClientError.invalidResponse) {
+            _ = try await transport.start(
+                idNumber: "A123456789",
+                intent: SigningBrokerIntent(type: .zkHoldingProofV1, tbs: nil, consent: nil),
+                transport: .appToApp,
+                timeLimit: 600)
+        }
+    }
+
     @Test func concurrentAssertionsAreQueuedAndACancelledWaiterNeverReachesNetwork() async throws {
         let record = AppAttestKeyRecord(keyID: brokerKeyID,
                                         scope: "test-scope",
@@ -562,7 +655,7 @@ struct AppAttestSigningBrokerTests {
         let allowed = try configurationBundle(baseURL: "https://signing-uat.mashbean.net")
         defer { try? FileManager.default.removeItem(at: allowed.directory) }
         #expect(SigningBrokerSessionAssembly.isConfigured(bundle: allowed.bundle))
-        #expect(SigningBrokerSessionAssembly.make(bundle: allowed.bundle) != nil)
+        #expect(SigningBrokerSessionAssembly.make(bundle: allowed.bundle, transport: .appToApp) != nil)
         #expect(SigningBrokerSessionAssembly.makeAppAttestUATCheck(bundle: allowed.bundle) != nil)
 
         let deviceDevelopment = try configurationBundle(baseURL: "https://signing-dev.mashbean.net")
@@ -573,13 +666,13 @@ struct AppAttestSigningBrokerTests {
         let arbitrary = try configurationBundle(baseURL: "https://signing.attacker.example")
         defer { try? FileManager.default.removeItem(at: arbitrary.directory) }
         #expect(!SigningBrokerSessionAssembly.isConfigured(bundle: arbitrary.bundle))
-        #expect(SigningBrokerSessionAssembly.make(bundle: arbitrary.bundle) == nil)
+        #expect(SigningBrokerSessionAssembly.make(bundle: arbitrary.bundle, transport: .appToApp) == nil)
         #expect(SigningBrokerSessionAssembly.makeAppAttestUATCheck(bundle: arbitrary.bundle) == nil)
     }
 
     @Test func debugAppDoesNotSelectTheDistributionEndpoint() {
         #expect(!SigningBrokerSessionAssembly.isConfigured(bundle: .main))
-        #expect(SigningBrokerSessionAssembly.make(bundle: .main) == nil)
+        #expect(SigningBrokerSessionAssembly.make(bundle: .main, transport: .appToApp) == nil)
         #expect(SigningBrokerSessionAssembly.makeAppAttestUATCheck(bundle: .main) == nil)
     }
 
@@ -625,6 +718,23 @@ struct AppAttestSigningBrokerTests {
             sender: sender,
             now: { brokerNow },
             makeRequestID: { "018f6c7e-1234-7123-8123-123456789abc" })
+    }
+
+    private func makeRegisteredStartTransport(response object: [String: Any]) throws
+        -> AppAttestSigningBrokerTransport {
+        let record = AppAttestKeyRecord(keyID: brokerKeyID,
+                                        scope: "test-scope",
+                                        registered: true,
+                                        pendingChallenge: nil,
+                                        pendingChallengeExpiresAt: nil,
+                                        pendingAttestationObject: nil)
+        let store = MemoryAppAttestKeyStore(record: record)
+        let sender = StubBrokerSender([
+            response(["challenge": assertionChallenge, "expires_at": brokerExpiry]),
+            response(object)
+        ])
+        return try makeTransport(
+            appAttest: StubAppAttestService(), store: store, sender: sender)
     }
 
     private func configurationBundle(baseURL: String) throws -> (bundle: Bundle, directory: URL) {
