@@ -325,7 +325,20 @@ enum CredentialIssuanceAssembly {
         #if DEBUG
         return true
         #else
-        return SigningBrokerSessionAssembly.isConfigured()
+        return false
+        #endif
+    }
+
+    /// Local configuration check only: never contacts a Bonds service or signs data.
+    static func checkDirectSigningAvailability() async throws {
+        #if DEBUG
+        do {
+            _ = try await DevelopmentSPCredentialProvider().credentials()
+        } catch {
+            throw CredentialIssuanceError.signingUnavailable(message: NSLocalizedString("TW FidO direct signing is not configured on this device. No MyData data has been requested.", comment: ""))
+        }
+        #else
+        throw CredentialIssuanceError.signingUnavailable(message: NSLocalizedString("Direct TW FidO card signing is not available in this build. You can still import original MyData files into the data vault from Home.", comment: ""))
         #endif
     }
 
@@ -347,14 +360,9 @@ enum CredentialIssuanceAssembly {
                     : false
             })
         #else
-        guard let session = SigningBrokerSessionAssembly.make(transport: chosenTransport) else { return nil }
-        return CredentialIssuance(
-            session: session,
-            open: { url in
-                await MainActor.run { UIApplication.shared.canOpenURL(url) }
-                    ? await UIApplication.shared.open(url)
-                    : false
-            })
+        // No Bonds-operated signing service is part of card issuance.
+        // The existing direct provider requires SP credentials and is development-only.
+        return nil
         #endif
     }
 

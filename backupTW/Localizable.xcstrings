@@ -1,6 +1,9 @@
 {
   "sourceLanguage": "en",
   "strings": {
+  "TW FidO direct signing is not configured on this device. No MyData data has been requested.": {"localizations": {"zh-Hant": {"stringUnit": {"state": "translated", "value": "這支裝置尚未設定 TW FidO 直接簽章介接，因此尚未向 MyData 要求資料。"}}}},
+  "Checking TW FidO setup\u2026": {"localizations": {"zh-Hant": {"stringUnit": {"state": "translated", "value": "正在檢查 TW FidO 設定⋯"}}}},
+  "Direct TW FidO card signing is not available in this build. You can still import original MyData files into the data vault from Home.": {"localizations": {"zh-Hant": {"stringUnit": {"state": "translated", "value": "這個版本尚未提供可用的 TW FidO 直接卡片簽章。你仍可從首頁將 MyData 原始文件匯入資料保險箱。"}}}},
   "Your downloaded details stay on this iPhone. Signing sends your ID number and a digest of the card to the signing service.": {"localizations": {"zh-Hant": {"stringUnit": {"state": "translated", "value": "下載的資料保留在這支 iPhone。簽章時，會將身分證字號與卡片內容的摘要傳送至簽章服務。"}}}},
   "Download your details, unlock the PDF if asked, and review them in Bonds before signing.": {"localizations": {"zh-Hant": {"stringUnit": {"state": "translated", "value": "下載資料後，依提示解鎖 PDF，再回 Bonds 檢查內容；這時尚未開始卡片簽章。"}}}},
   "Approve a separate Bonds signature in \u884c\u52d5\u81ea\u7136\u4eba\u6191\u8b49. Return to Bonds and wait for the card-saved confirmation.": {"localizations": {"zh-Hant": {"stringUnit": {"state": "translated", "value": "到「行動自然人憑證」確認另一筆 Bonds 簽章，回來等候「卡片已儲存」的確認。"}}}},

@@ -1,19 +1,11 @@
-# MyData 首次領卡流程（2026-09-12）
+# 更正：卡片簽章不依賴 Bonds 自建後端（2026-09-12）
 
-下載資料與建立卡片是兩個不同的成功條件。MyData 完成授權、PDF 解鎖後，App 顯示資料檢查頁；使用者主動按「簽章並建立卡片」才開始 Bonds 的另一筆簽章。只有驗證成功且 CredentialStore 儲存成功，才顯示「卡片已儲存」與完成按鈕。
+使用者確認不提供 Bonds 後端服務。本次移除 PR #66 的能力端點／App Attest 前置查詢，並移除國民身分卡建立流程對 SigningBrokerSessionAssembly 的 Release 接線。後端 PR #9 未部署，本流程不再使用它。其他既有功能的 broker 程式不在本次變更範圍。
 
-Release 在開啟 MyData 前，查詢固定 broker 的 `GET /v1/signatures/capabilities`（version 1、start_enabled、poll_enabled、transports）。兩個開關皆開啟且支援選用的 transport 才做 App Attest 連線檢查。舊後端的 404、無法解析、停用或連線失敗皆阻止下載；查詢本身不傳身分證字號。DEBUG 的既有直接供應者不使用此 broker 檢查。
+保留下載後核對、明確另行簽章、成功儲存才顯示完成、失敗重試、取消等待、密碼保護與草稿釋放。
 
-後端配套：https://github.com/bonds-tw/bonds-signing-broker/pull/9 。必須先部署配套端點，再發佈新版 App。能力旗標只表示設定接受要求，不能保證外部 TW FidO 服務可用。此修改沒有開啟簽章開關或新增簽章密鑰。
+現有直接 TW FidO client 仍需 SP service ID 與 AES 介接憑證來產生 checksum；使用者在 TW FidO 的簽章，與應用服務發起要求的介接授權是不同事項。開發版先在本機檢查介接設定，不傳送個資。正式版沒有可發行的直接憑證提供方式，因此不再用 broker URL 推論可領卡，而是明確停止卡片建立、提示可從首頁匯入 MyData 原始文件。沒有將共用 SP 密鑰放進 App，沒有把 MyData 登入成功冒充卡片簽章。
 
-簽章失敗保留本次記憶體中的資料。重新簽章需明確確認，並提醒先取消憑證 App 的待簽要求或等候過期；不自動重新下載或重發。停止等候取消本機工作，寫入前再次檢查取消，不等於遠端撤銷。草稿不寫入磁碟，離開需確認捨棄；關閉 App 後尚無跨次恢復。
+官方來源：https://fido.moi.gov.tw/pt/agency （App 對 App 為需申請的介接模式）。程式證據：TWFidOClient.swift、SPSecrets.swift。這不代表已證明所有無自建後端方案都不可行；仍需確認官方是否提供適合公開行動 App、無共用密鑰散布的正式介接方式。
 
-MyData 的憑證 App 無法開啟時保留原網頁並顯示恢復指示。PDF 密碼可取消、採遮罩輸入，去除前後空白並轉大寫，且說明不是憑證 PIN。
-
-## 驗證與尚未完成
-
-- 本機完整 Swift 測試：1,640 tests / 173 suites 通過；網路隔離檢查通過。
-- 模擬器 UI：資料檢查／取消保留，以及兩個 MyData 保險箱測試通過。區段索引修正後另做針對性重跑。
-- Release arm64 模擬器編譯通過。OpenAC 既有二進位不含 x86_64，不能以 Intel 模擬器建置驗證。
-- 未發佈新 TestFlight，也未證明真實 MyData／TW FidO 領卡成功。
-- 發佈驗收應由首次使用者在實機完成：服務檢查 → MyData 授權 → 憑證 App 返回 → PDF 解鎖 → 核對 → 另一次卡片簽章 → 卡片儲存 → Home 開啟卡片。另測未安装、拒絕、斷線、逾時、停止等候與重啟 App；只記錄階段與結果，不蒐集個資或待簽內容。
+未完成：正式版 TW FidO 直接簽章整合、TestFlight 真實領卡驗收。MyData 原始文件匯入不依賴 Bonds 簽章服務。

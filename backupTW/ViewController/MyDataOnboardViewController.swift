@@ -77,7 +77,7 @@ class MyDataOnboardViewController: UICollectionViewController {
                        secondaryText: NSLocalizedString("First authorize MyData to download your details. Then review them and sign separately to create your Bonds card. This does not replace a government-issued ID.", comment: ""))
                 : Item(image: Self.statusImage("xmark.shield.fill", colour: .systemOrange),
                        title: NSLocalizedString("This version cannot create a document", comment: ""),
-                       secondaryText: NSLocalizedString("Signing needs a service this build cannot reach, so the document could not be created even after fetching your data. Nothing is fetched.", comment: ""))
+                       secondaryText: NSLocalizedString("Direct TW FidO card signing is not available in this build. You can still import original MyData files into the data vault from Home.", comment: ""))
             self.items = [
                 Item(title: NSLocalizedString("Nationality", comment: ""), secondaryText: ""),
                 Item(title: NSLocalizedString("Unified No.", comment: ""), secondaryText: ""),
@@ -117,7 +117,7 @@ class MyDataOnboardViewController: UICollectionViewController {
         title = isNationalID ? NSLocalizedString("Create my card", comment: "") : documentType.title
         navigationController?.navigationBar.prefersLargeTitles = true
         navigationItem.leftBarButtonItem = UIBarButtonItem(barButtonSystemItem: .cancel, target: self, action: #selector(cancel))
-        // Configuration is checked here; live service acceptance is checked on Continue.
+        // Configuration is checked here; direct TW FidO configuration is checked on Continue.
         let proceed = UIBarButtonItem(title: NSLocalizedString("Continue", comment: ""),
                                       style: .done, target: self, action: #selector(nextAction))
         proceed.isEnabled = canProceed
@@ -284,10 +284,10 @@ class MyDataOnboardViewController: UICollectionViewController {
         guard isNationalID else { openMyData(); return }
         checkingReadiness = true
         navigationItem.rightBarButtonItem?.isEnabled = false
-        navigationItem.rightBarButtonItem?.title = NSLocalizedString("Checking service…", comment: "")
+        navigationItem.rightBarButtonItem?.title = NSLocalizedString("Checking TW FidO setup…", comment: "")
         Task { [weak self] in
             do {
-                try await SigningReadiness.check()
+                try await CredentialIssuanceAssembly.checkDirectSigningAvailability()
                 guard let self else { return }
                 self.checkingReadiness = false
                 self.navigationItem.rightBarButtonItem?.isEnabled = true
@@ -428,14 +428,9 @@ class MyDataOnboardViewController: UICollectionViewController {
             let result: Result<Void, Error>
             do {
                 guard let issuance = CredentialIssuanceAssembly.make(transport: selectedTransport) else {
-                    // Deliberately *not* `SPCredentialError.requiresBackend.description`.
-                    // That type is `CustomStringConvertible` rather than
-                    // `LocalizedError` on purpose — its own doc says its audience
-                    // is whoever reads the log — and piping it here would put
-                    // 「sp_checksum must be computed by the bonds-tw backend」 in
-                    // front of somebody who was trying to back up their ID card.
+                    // Explain the direct-integration limitation without exposing provider details.
                     throw CredentialIssuanceError.signingUnavailable(
-                        message: NSLocalizedString("This version cannot sign documents yet. Signing has to go through the bonds-tw service, which is not available in this build.",
+                        message: NSLocalizedString("Direct TW FidO card signing is not available in this build. You can still import original MyData files into the data vault from Home.",
                                                    comment: ""))
                 }
                 // A national ID owns its key. The app installation has a separate
