@@ -130,7 +130,8 @@ class MyDataOnboardViewController: UICollectionViewController {
     }
 
     private func configureDataSource() {
-        let cellRegistration = UICollectionView.CellRegistration<UICollectionViewListCell, Item> { cell, indexPath, item in
+        let cellRegistration = UICollectionView.CellRegistration<UICollectionViewListCell, Item> { [weak self] cell, indexPath, item in
+            guard let self else { return }
             let section = self.dataSource.sectionIdentifier(for: indexPath.section)
             let isCover = section == .cover
             // The household address is structurally a long field, even when a
@@ -189,7 +190,8 @@ class MyDataOnboardViewController: UICollectionViewController {
             collectionView, indexPath, item in
             collectionView.dequeueConfiguredReusableCell(using: cellRegistration, for: indexPath, item: item)
         }
-        let headerRegistration = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(elementKind: UICollectionView.elementKindSectionHeader) { headerView, elementKind, indexPath in
+        let headerRegistration = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(elementKind: UICollectionView.elementKindSectionHeader) { [weak self] headerView, elementKind, indexPath in
+            guard let self else { return }
             var content = headerView.defaultContentConfiguration()
             switch self.dataSource.sectionIdentifier(for: indexPath.section) {
             case .guidance:
@@ -203,7 +205,8 @@ class MyDataOnboardViewController: UICollectionViewController {
             }
             headerView.contentConfiguration = content
         }
-        let footerRegistration = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(elementKind: UICollectionView.elementKindSectionFooter) { footerView, elementKind, indexPath in
+        let footerRegistration = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(elementKind: UICollectionView.elementKindSectionFooter) { [weak self] footerView, elementKind, indexPath in
+            guard let self else { return }
             var content = footerView.defaultContentConfiguration()
             switch self.dataSource.sectionIdentifier(for: indexPath.section) {
             case .profile:

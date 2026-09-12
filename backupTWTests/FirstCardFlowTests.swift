@@ -19,6 +19,19 @@ struct FirstCardFlowTests {
         #expect(!nav.isModalInPresentation)
     }
 
+    @Test func leavingReviewDoesNotRetainIdentityDraft() async {
+        weak var released: MyDataOnboardViewController?
+        autoreleasepool {
+            let vc = MyDataOnboardViewController()
+            released = vc
+            vc.loadViewIfNeeded()
+            vc.showParsedDocument(NationalIDModel(nationality: "TEST", unifiedNo: "TEST000001", name: "Fixture", birthdate: "TEST", addressOfHousehold: "TEST"))
+        }
+        // Diffable data source may finish applying its queued snapshot first.
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        #expect(released == nil)
+    }
+
     @Test func passwordNormalization() {
         #expect(MyDataWebViewController.normalizedDocumentPassword("  a123456789\n") == "A123456789")
     }
