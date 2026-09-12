@@ -300,11 +300,13 @@ final class OfficialDocumentDetailViewController: UITableViewController {
                         title: NSLocalizedString("OK", comment: ""), style: .cancel))
                     self.present(completed, animated: true)
                 } catch {
-                    ErrorCatcher.present(
-                        error: error,
+                    let failure = UIAlertController(
                         title: NSLocalizedString("The sandbox confirmation was not recorded", comment: "official document detail"),
-                        on: self
-                    )
+                        message: error.localizedDescription,
+                        preferredStyle: .alert)
+                    failure.addAction(UIAlertAction(
+                        title: NSLocalizedString("OK", comment: ""), style: .cancel))
+                    self.present(failure, animated: true)
                 }
             })
         alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))

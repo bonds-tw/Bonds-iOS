@@ -82,7 +82,7 @@ struct OfficialDocumentSigning {
         let idNumber = idNumber.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !idNumber.isEmpty else { throw OfficialDocumentSigningError.identityNumberMissing }
 
-        let started: TWFidOSignStart
+        let started: (handle: TWFidOSignHandle, deepLink: URL)
         do {
             started = try await session.begin(idNumber: idNumber,
                                               hint: hint,
@@ -94,20 +94,12 @@ struct OfficialDocumentSigning {
             throw OfficialDocumentSigningError.signingFailed(message: Self.message(for: error))
         }
 
-        let hasLocalCallback: Bool
-        switch started.delivery {
-        case .appToApp(let deepLink):
-            guard await open(deepLink) else {
-                throw OfficialDocumentSigningError.certificateAppUnavailable
-            }
-            hasLocalCallback = true
-        case .push:
-            hasLocalCallback = false
+        guard await open(started.deepLink) else {
+            throw OfficialDocumentSigningError.certificateAppUnavailable
         }
 
         let result = try await awaitResult(
             handle: started.handle,
-            hasLocalCallback: hasLocalCallback,
             deadline: started.handle.deadline(
                 fallback: now().addingTimeInterval(TimeInterval(timeLimit))))
         do {
@@ -118,7 +110,6 @@ struct OfficialDocumentSigning {
     }
 
     private func awaitResult(handle: TWFidOSignHandle,
-                             hasLocalCallback: Bool,
                              deadline: Date) async throws -> TWFidOSignResult {
         var sawTransportFailure = false
         while true {
@@ -138,19 +129,15 @@ struct OfficialDocumentSigning {
                                           : OfficialDocumentSigningError.timedOut
             }
 
-            if hasLocalCallback {
-                let callbacks = self.callbacks
-                let sleep = self.sleep
-                let interval = self.pollInterval
-                await withTaskGroup(of: Void.self) { group in
-                    group.addTask { try? await sleep(interval) }
-                    group.addTask { await callbacks.waitForCallback(transactionID: handle.transactionID) }
-                    await group.next()
-                    await callbacks.cancelWait(transactionID: handle.transactionID)
-                    group.cancelAll()
-                }
-            } else {
-                try await sleep(pollInterval)
+            let callbacks = self.callbacks
+            let sleep = self.sleep
+            let interval = self.pollInterval
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask { try? await sleep(interval) }
+                group.addTask { await callbacks.waitForCallback(transactionID: handle.transactionID) }
+                await group.next()
+                await callbacks.cancelWait(transactionID: handle.transactionID)
+                group.cancelAll()
             }
         }
     }
@@ -179,7 +166,7 @@ enum OfficialDocumentSigningAssembly {
         #endif
     }
 
-    static func make(transport: TWFidOTransport) -> OfficialDocumentSigning? {
+    static func make() -> OfficialDocumentSigning? {
         #if DEBUG
         guard let returnURL = URL(string: "\(MOICACallbackRouter.scheme)://twfido-official-documents") else {
             return nil
@@ -187,14 +174,14 @@ enum OfficialDocumentSigningAssembly {
         let client = TWFidOClient(configuration: .production,
                                   credentials: DevelopmentSPCredentialProvider())
         return OfficialDocumentSigning(
-            session: LiveTWFidOSignSession(client: client, transport: transport, returnURL: returnURL),
+            session: LiveTWFidOSignSession(client: client, returnURL: returnURL),
             open: { url in
                 await MainActor.run { UIApplication.shared.canOpenURL(url) }
                     ? await UIApplication.shared.open(url)
                     : false
             })
         #else
-        guard let session = SigningBrokerSessionAssembly.make(transport: transport) else { return nil }
+        guard let session = SigningBrokerSessionAssembly.make() else { return nil }
         return OfficialDocumentSigning(
             session: session,
             open: { url in
@@ -203,10 +190,5 @@ enum OfficialDocumentSigningAssembly {
                     : false
             })
         #endif
-    }
-
-    @MainActor
-    static func make() -> OfficialDocumentSigning? {
-        make(transport: TWFidOTransportSelection.automatic())
     }
 }
