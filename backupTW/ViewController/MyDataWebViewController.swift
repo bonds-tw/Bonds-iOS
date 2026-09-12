@@ -267,12 +267,12 @@ extension MyDataWebViewController : WKNavigationDelegate {
             decisionHandler(.cancel)
             return
         }
-        if let scheme = url.scheme,
-           scheme == "mobilemoica",
-           UIApplication.shared.canOpenURL(url) {
-            openedCertificateApp = true
-            updateGuide(.certificate)
-            UIApplication.shared.open(url)
+        if let scheme = url.scheme, scheme.caseInsensitiveCompare("mobilemoica") == .orderedSame {
+            if UIApplication.shared.canOpenURL(url) {
+                openedCertificateApp = true
+                updateGuide(.certificate)
+                UIApplication.shared.open(url)
+            }
             decisionHandler(.cancel)
             return
         }

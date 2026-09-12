@@ -144,6 +144,14 @@ struct TWFidOTicket: Equatable, Sendable {
     let spTicketID: String
 }
 
+/// The delivery transport for a TW FidO signing transaction:
+/// - `appToApp` (ATH-01): hands off to 行動自然人憑證 via a custom URL scheme on the same device.
+/// - `push` (ATH-03): asks 內政部 to push a notification to the holder's registered device(s).
+enum TWFidOTransport: String, Codable, Sendable {
+    case appToApp = "app_to_app"
+    case push = "push"
+}
+
 enum TWFidOSignHandleError: Error, Equatable, Sendable {
     case wrongTransport
 }
@@ -316,7 +324,7 @@ func isTransientSignPollFailure(_ error: Error) -> Bool {
             return true
         case .server(_, let retryable):
             return retryable
-        case .configurationMissing, .appAttestUnsupported, .appAttestKeyInvalid,
+        case .configurationMissing, .remotePushUnavailable, .appAttestUnsupported, .appAttestKeyInvalid,
              .invalidTimeLimit:
             return false
         }

@@ -7,12 +7,23 @@
 
 ## 決策
 
-有備而來的出貨版本採用一個獨立的 `bonds-signing-broker`，專門代理行動自然人憑證 ATH-01／ATH-02：
+### PR #65：相容性與推播啟用界線
+
+App 已具備 app-to-app／push 的獨立狀態機，但目前 broker 的既有 start 契約不接受 `transport`，也尚未完成 ATH-03 的後端實作與 Release 真機驗收。下文的 push 欄位與回應規則是待後端落實的契約，不代表遠端推播已可使用。
+
+- 同機簽章維持既有 wire format：省略 `transport`，App Attest business-body hash 也不包含該欄位。省略代表 app-to-app；不可只刪 JSON 欄位而保留新 hash。
+- Release broker push 預設關閉。只有受信任 endpoint 所在的 code-signed Info.plist 明確設定 `BondsSigningBrokerSupportsPush = true` 才允許發出 push start；目前專案不設定此旗標。
+- 關閉時在 App Attest 註冊、assertion 與傳送身分資料之前回報「此版本尚未開放跨裝置簽章」，不等待 callback、不開始輪詢、不自動改走同機簽章。
+- DEBUG 直接 MOICA client 仍可測試 push；這不是 Release broker 的驗收證據。
+- MyData 文件匯入維持不檢查本機 MobileMoica 安裝；官方 MyData 網頁的登入／確認方式依該頁指示，不能與後續憑證簽發的 broker 能力混為一談。
+- 啟用旗標前，後端須支援新欄位、canonical hash、冪等 transport 綁定、ATH-03 provider、push response；保留舊版 client 相容性，並以同一候選 Release／TestFlight build 實測同機與跨裝置 start→approve→poll→App 驗章。
+
+有備而來的出貨版本採用一個獨立的 `bonds-signing-broker`，專門代理行動自然人憑證 ATH-01（app-to-app）、ATH-03（push）與 ATH-02（result）：
 
 - SP service ID 與 AES-256 key 只存在後端；App 不得取得 `sp_checksum` 或 `idp_checksum` 的等價能力。
 - UAT／低流量試辦以獨立 Cloudflare Worker、SQLite-backed Durable Objects 與 Worker Secrets 實作；`dev`、`uat`、`production` 使用不同 Worker 與 Durable Object namespace。這不是 production 資料落地承諾。
 - iOS 以 App Attest 為敏感 API 的裝置／App 完整性門檻。Release 裝置不支援或無法完成 App Attest 時，保留查驗能力，但簽發身分證與建立 ZK 證明必須 fail closed。
-- 後端只接受三種固定簽章意圖，不提供任意 `sign_data`、任意提示文字或 push 介面。
+- 後端只接受三種固定簽章意圖，不提供任意 `sign_data` 或任意提示文字；支援受規範的 app-to-app 與遠端推播 transport。
 - ZK challenge、nullifier 政策、verifying key 發布與撤銷 root 錨定各自留在正確的信任邊界，不塞進簽章代理。
 
 後端的第一個正式版本不重用 `bonds-wall` Worker，也不重用個人的 OIDC4VP verifier。三者處理的資料、管理者、生命週期與失效半徑不同，合併只會把身分證統一編號帶進原本刻意不識別簽署者的服務。
@@ -75,7 +86,7 @@ API 不接受任意 `hint` 或任意 `sign_data`，只接受以下 discriminated
    - 後端以與 App 相同的 canonicalization 重建 SHA-256 與完整 `bonds-tw-official-document-consent-v1:<64 lowercase hex>` TBS，再送交 FidO；不接受 client 自帶的任意 digest，也不把這次簽章解讀成已取得 G2C 收件地址或已同意任何機關的法定電子送達。
    - 後端固定繁體中文提示；client 不能覆寫。待檔案管理局／機關正式介接規則存在後，另立新版 intent 與 consent scope，不沿用這個 prototype 簽章擴權。
 
-v0 不做 ATH-03 push、不收 device alias、不讓呼叫端指定 return URL。回到 App 的 URL scheme 與提示文字都由 server-side configuration 固定，避免把服務做成任意推播／簽章 oracle。
+支援 ATH-01 app-to-app 與 ATH-03 遠端推播兩種 transport。不收 device alias、不讓呼叫端指定 return URL。回到 App 的 URL scheme 與提示文字都由 server-side configuration 固定，避免把服務做成任意推播／簽章 oracle。
 
 ## API v1
 
@@ -102,9 +113,16 @@ Apple 要求 server 發放 unique one-time challenge、保存已驗證的 public
 ### 開始簽章
 
 - `POST /v1/signatures/start`
-  - 輸入：`request_id`、App Attest key ID、assertion、assertion challenge、身分證統一編號、intent。
+  - 輸入：`request_id`、App Attest key ID、assertion、assertion challenge、身分證統一編號、intent、可選 `transport`（預設 `"app_to_app"`，可選 `"push"`）。
   - assertion 的 `clientData` 必須涵蓋 API version、HTTP method、path、challenge、request ID、canonical body hash。
-  - 回傳：opaque `session_token`、固定 return scheme 的 FidO deep link、`expires_at`。
+  - 回傳 JSON 包含 opaque `session_token` 與 `expires_at`；`transaction_id` 是 App 後續 poll 與 callback 關聯工作的唯一交易識別，不得是身分證字號、ticket 或 session token。`push` 回應必須包含非空 `transaction_id`（UTF-8 不超過 256 bytes、不得含控制字元）；`app_to_app` 可由 deep link 的 `rtn_val` 提供，若另附 body 欄位則同樣遵守這個驗證。
+  - `app_to_app` 回傳 `deep_link`：必須是 `mobilemoica` scheme（scheme 比較不分大小寫），且 query 的 `rtn_val` 必須是可解碼為同一個交易識別的 base64url 值；若同時回傳 body `transaction_id`，兩者必須完全相等。App 只接受通過這些檢查的 deep link。
+  - `push` 回傳 `deep_link: null`（或省略此欄位；不得是其他值），並以 body `transaction_id` 識別交易；App 不開啟 deep link、不註冊或等待本機 callback，只以 poll／sleep 取得結果。transport 與回應形狀不一致時 App 一律 fail closed。
+
+  Client state machines are intentionally separate:
+
+  - `app_to_app`: `start` → validate and open `deep_link` → optionally wake on the app callback → `poll` until complete or expired. The callback is only a wake-up hint; the authenticated poll result is authoritative.
+  - `push`: `start` → wait/sleep → `poll` until complete or expired. There is no local deep-link hand-off and no callback waiter, because approval may happen on another bound device.
   - `request_id` 在同一 App Attest installation 及 TTL 內冪等；相同 ID 配不同 body hash 回 `409 replay_detected`。
 
 ### 查詢結果
@@ -183,7 +201,7 @@ ATH-02 完成後是否能以同一 ticket 重複取得同一結果，必須在 U
 - 不把 production SP secret、可產生 checksum 的衍生值或遠端 secret fetch credential 放進 App。
 - 不把 `bonds-wall` 改成身分簽章 broker，也不讓 signing broker 代管 Wall 的 challenge／signature count。
 - 不代理 MyData 登入、下載或保存任何 MyData 原始文件。
-- 不提供任意 `sign_data`、任意提示、任意 callback URL、ATH-03 push 或 device alias。
+- 不提供任意 `sign_data`、任意提示、任意 callback URL 或 device alias。
 - 不建立帳號系統、不保存全域身分 profile、不把 App Attest key 當人。
 - 不保存 certificate、signed response、hashed ID、ZK proof 或 nullifier。
 - 不做 global nullifier registry；目前固定 app ID 會讓 nullifier 跨 verifier 共用，直接集中收集會擴大可連結性。
@@ -203,14 +221,14 @@ ATH-02 完成後是否能以同一 ticket 重複取得同一結果，必須在 U
 | [I1](https://github.com/bonds-tw/backupTW-iOS/issues/44)：App Attest actor、key lifecycle、challenge／assertion client | M | 3–5 日 | dev／prod environment 分離；reinstall／unsupported 誠實處理 |
 | [I2](https://github.com/bonds-tw/backupTW-iOS/issues/45)：remote `TWFidOSignSession`、opaque handle、Release assembly | L | 5–8 日 | Release 可簽 credential 與啟動 ZK；DEBUG local path 不可達 |
 | [I3](https://github.com/bonds-tw/backupTW-iOS/issues/46)：Release verifying-key 安裝與 pinned manifest／hash（[manifest 與更新／回滾規則](zk-verifying-key-manifest.md)） | M | 2–4 日 | 不需 signing broker 即可安裝、重驗與離線查驗 |
-| [Q1](https://github.com/bonds-tw/backupTW-iOS/issues/47)：UAT／TestFlight security matrix | L | 4–7 日主動工時 | 真機 start→callback→poll、重複 poll、斷線、重放、rotation、archive scan 全有證據 |
+| [Q1](https://github.com/bonds-tw/backupTW-iOS/issues/47)：UAT／TestFlight security matrix | L | 4–7 日主動工時 | 真機 app-to-app `start→callback hint→poll`、push `start→poll/sleep`（不得 callback）、重複 poll、斷線、重放、rotation、archive scan 全有證據 |
 
 單人序列約 30–50 工程日；B1/B2/B3/B4 與 I1/I3 可部分並行。即使程式完成，沒有真實 iPhone、正式 App Attest environment、有效 SP UAT credential 與 TestFlight archive，也不能把本階段標成產品完成。
 
 ## 最終 Release／TestFlight 門檻
 
 1. Release archive 能安裝，binary／resources／strings 掃描找不到 SP AES key、service credential、DEBUG secret filename 或 local provider 可達路徑。
-2. TestFlight 使用 production App Attest environment 完成 register、start、callback、poll；development attestation 必須被 production backend 拒絕。
+2. TestFlight 使用 production App Attest environment 完成 register；app-to-app 完成 `start→callback hint→poll`，push 完成 `start→poll/sleep` 且不得註冊或等待 callback；development attestation 必須被 production backend 拒絕。
 3. 真機完成一次身分證 credential 簽發與一次 ZK holding proof 簽章；App 端都重新驗證 MOI certificate／signature。
 4. 同一 `request_id` 重送不產生第二個 prompt；不同 body、重放 challenge、counter 倒退、跨裝置 session token 全被拒。
 5. 斷線與 ATH-02 repeat-poll 行為有 UAT 實測結論；未知結果不自動重簽。

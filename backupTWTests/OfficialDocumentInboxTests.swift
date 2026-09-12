@@ -740,31 +740,75 @@ struct OfficialDocumentInboxTests {
 private actor OfficialDocumentStubSession: TWFidOSignSession {
     private(set) var receivedSigning: TWFidOSigningTarget?
     private let result: TWFidOSignResult
+    private let delivery: TWFidOSignDelivery
+    private var pollResults: [TWFidOSignResult?]
+    private var pollIndex = 0
 
-    init(result: TWFidOSignResult) { self.result = result }
+    init(result: TWFidOSignResult,
+         delivery: TWFidOSignDelivery = .appToApp(URL(string: "mobilemoica://moica.moi.gov.tw/a2a/verifySign")!),
+         pollResults: [TWFidOSignResult?] = []) {
+        self.result = result
+        self.delivery = delivery
+        self.pollResults = pollResults
+    }
 
     func begin(idNumber: String,
                hint: String,
                signing: TWFidOSigningTarget,
-               timeLimit: Int) async throws -> (handle: TWFidOSignHandle, deepLink: URL) {
+               timeLimit: Int) async throws -> TWFidOSignStart {
         receivedSigning = signing
-        return (.local(TWFidOTicket(spTicket: "ticket",
-                                   transactionID: "transaction",
-                                   spTicketID: "id")),
-                URL(string: "mobilemoica://moica.moi.gov.tw/a2a/verifySign")!)
+        return TWFidOSignStart(
+            handle: .local(TWFidOTicket(spTicket: "ticket",
+                                         transactionID: "transaction",
+                                         spTicketID: "id")),
+            delivery: delivery)
     }
 
-    func poll(handle: TWFidOSignHandle) async throws -> TWFidOSignResult? { result }
+    func poll(handle: TWFidOSignHandle) async throws -> TWFidOSignResult? {
+        defer { pollIndex += 1 }
+        guard pollIndex < pollResults.count else { return result }
+        return pollResults[pollIndex]
+    }
 
     func signingTarget() -> TWFidOSigningTarget? { receivedSigning }
 }
 
 private actor ImmediateOfficialDocumentCallbacks: TWFidOCallbackWaiting {
-    func waitForCallback(transactionID: String) async {}
-    func cancelWait(transactionID: String) async {}
+    private(set) var waitCount = 0
+    private(set) var cancelCount = 0
+    func waitForCallback(transactionID: String) async { waitCount += 1 }
+    func cancelWait(transactionID: String) async { cancelCount += 1 }
 }
 
 struct OfficialDocumentSigningTests {
+
+    @Test func pushDeliveryPollsWithoutOpeningOrWaitingForCallback() async throws {
+        let consent = OfficialDocumentInboxConsent(
+            createdAt: Date(timeIntervalSince1970: 1_800_000_000),
+            nonce: "one-use-nonce")
+        let result = TWFidOSignResult(cert: "cert", signedResponse: "signature",
+                                      hashedIDNumber: "must-not-be-stored")
+        let session = OfficialDocumentStubSession(result: result,
+                                                  delivery: .push,
+                                                  pollResults: [nil, result])
+        let callbacks = ImmediateOfficialDocumentCallbacks()
+        var openCount = 0
+        let signing = OfficialDocumentSigning(
+            session: session,
+            callbacks: callbacks,
+            open: { _ in openCount += 1; return false },
+            makeReceipt: { consent, result, now in
+                OfficialDocumentInboxReceipt(consent: consent,
+                                             certificate: result.cert,
+                                             signature: result.signedResponse,
+                                             recordedAt: now)
+            })
+
+        _ = try await signing.sign(consent: consent, idNumber: "A123456789")
+        #expect(openCount == 0)
+        #expect(await callbacks.waitCount == 0)
+        #expect(await callbacks.cancelCount == 0)
+    }
     @Test func signingUsesTheOfficialDocumentTargetAndReturnsAPrototypeReceipt() async throws {
         let consent = OfficialDocumentInboxConsent(
             createdAt: Date(timeIntervalSince1970: 1_800_000_000),

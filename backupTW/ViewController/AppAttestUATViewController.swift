@@ -43,6 +43,7 @@ struct AppAttestUATReport: Equatable, Sendable {
         }
         switch error {
         case .configurationMissing: return "configuration_missing"
+        case .remotePushUnavailable: return "remote_push_unavailable"
         case .appAttestUnsupported: return "app_attest_unsupported"
         case .appAttestUnavailable: return "app_attest_unavailable"
         case .appAttestKeyInvalid: return "app_attest_key_invalid"

@@ -493,7 +493,7 @@ protocol TWFidOSignSession: Sendable {
     func begin(idNumber: String,
                hint: String,
                signing: TWFidOSigningTarget,
-               timeLimit: Int) async throws -> (handle: TWFidOSignHandle, deepLink: URL)
+               timeLimit: Int) async throws -> TWFidOSignStart
     func poll(handle: TWFidOSignHandle) async throws -> TWFidOSignResult?
 }
 
@@ -521,19 +521,46 @@ extension MOICACallbackRouter: TWFidOCallbackWaiting {}
 struct LiveTWFidOSignSession: TWFidOSignSession, @unchecked Sendable {
 
     let client: TWFidOClient
-    let returnURL: URL
+    let returnURL: URL?
+    let transport: TWFidOTransport
+
+    init(client: TWFidOClient, returnURL: URL) {
+        self.client = client
+        self.returnURL = returnURL
+        self.transport = .appToApp
+    }
+
+    init(client: TWFidOClient, transport: TWFidOTransport = .appToApp, returnURL: URL? = nil) {
+        self.client = client
+        self.transport = transport
+        self.returnURL = returnURL
+    }
 
     func begin(idNumber: String,
                hint: String,
                signing: TWFidOSigningTarget,
-               timeLimit: Int) async throws -> (handle: TWFidOSignHandle, deepLink: URL) {
-        let started = try await client.requestSignAppToApp(
-            TWFidOSignRequest(idNumber: idNumber,
-                              hint: hint,
-                              signing: signing,
-                              timeLimit: timeLimit),
-            returnURL: returnURL)
-        return (.local(started.ticket), started.deepLink)
+               timeLimit: Int) async throws -> TWFidOSignStart {
+        switch transport {
+        case .appToApp:
+            guard let returnURL else {
+                throw TWFidOError.invalidReturnURL
+            }
+            let started = try await client.requestSignAppToApp(
+                TWFidOSignRequest(idNumber: idNumber,
+                                  hint: hint,
+                                  signing: signing,
+                                  timeLimit: timeLimit),
+                returnURL: returnURL)
+            return TWFidOSignStart(handle: .local(started.ticket),
+                                   delivery: .appToApp(started.deepLink))
+        case .push:
+            let ticket = try await client.requestSignPush(
+                TWFidOSignRequest(idNumber: idNumber,
+                                  hint: hint,
+                                  signing: signing,
+                                  timeLimit: timeLimit))
+            return TWFidOSignStart(handle: .local(ticket), delivery: .push)
+        }
     }
 
     func poll(handle: TWFidOSignHandle) async throws -> TWFidOSignResult? {
@@ -618,7 +645,7 @@ struct TWFidOHolderSigner: ZKHolderSigning {
     }
 
     func sign(challenge: ProofChallenge) async throws -> ProvingInputs {
-        let started: (handle: TWFidOSignHandle, deepLink: URL)
+        let started: TWFidOSignStart
         do {
             // The relying-party identifier, not a credential digest, and the
             // choice is not stylistic. The circuit takes this exact string as
@@ -640,14 +667,22 @@ struct TWFidOHolderSigner: ZKHolderSigning {
             throw ZKRunError.signingFailed(message: ZKProofRunner.message(for: error))
         }
 
-        guard await open(started.deepLink) else {
-            throw ZKRunError.signingUnavailable(message: NSLocalizedString(
-                "The 行動自然人憑證 app isn't installed on this device.", comment: ""))
+        switch started.delivery {
+        case .appToApp(let deepLink):
+            guard await open(deepLink) else {
+                throw ZKRunError.signingUnavailable(message: NSLocalizedString(
+                    "The 行動自然人憑證 app isn't installed on this device.", comment: ""))
+            }
+        case .push:
+            break
         }
 
         let deadline = started.handle.deadline(
             fallback: now().addingTimeInterval(TimeInterval(timeLimit)))
-        let result = try await awaitResult(handle: started.handle, deadline: deadline)
+        let result = try await awaitResult(
+            handle: started.handle,
+            hasLocalCallback: started.delivery.isAppToApp,
+            deadline: deadline)
 
         // Before `ProvingInputs`, so a refusal costs a millisecond rather than a
         // proof. See the type's doc comment for why this is not a security gate.
@@ -676,6 +711,7 @@ struct TWFidOHolderSigner: ZKHolderSigning {
     /// resume it, so a wait abandoned here would strand a task for the life of
     /// the process — and the task group would never finish.
     private func awaitResult(handle: TWFidOSignHandle,
+                             hasLocalCallback: Bool,
                              deadline: Date) async throws -> TWFidOSignResult {
         // Same shape as `CredentialIssuance.awaitResult`, for the same measured
         // reason: the first poll races this app's own backgrounding during the
@@ -709,7 +745,11 @@ struct TWFidOHolderSigner: ZKHolderSigning {
                 }
                 throw ZKRunError.signingTimedOut
             }
-            await raceCallbackAgainstSleep(transactionID: handle.transactionID)
+            if hasLocalCallback {
+                await raceCallbackAgainstSleep(transactionID: handle.transactionID)
+            } else {
+                try await sleep(pollInterval)
+            }
         }
     }
 
@@ -773,6 +813,7 @@ enum ZKProofRunAssembly {
     /// `nil` when this build cannot reach TW FidO at all, so the screen can say
     /// so up front rather than after a download.
     static func makeSigner(idNumber: String,
+                           transport: TWFidOTransport,
                            open: @escaping @Sendable (URL) async -> Bool) -> (any ZKHolderSigning)? {
         #if DEBUG
         guard let returnURL = URL(string: "\(MOICACallbackRouter.scheme)://twfido-sign") else {
@@ -782,14 +823,22 @@ enum ZKProofRunAssembly {
                                   credentials: DevelopmentSPCredentialProvider())
         return TWFidOHolderSigner(
             idNumber: idNumber,
-            session: LiveTWFidOSignSession(client: client, returnURL: returnURL),
+            session: LiveTWFidOSignSession(client: client, transport: transport, returnURL: returnURL),
             open: open)
         #else
-        guard let session = SigningBrokerSessionAssembly.make() else { return nil }
+        guard let session = SigningBrokerSessionAssembly.make(transport: transport) else { return nil }
         return TWFidOHolderSigner(idNumber: idNumber,
                                   session: session,
                                   open: open)
         #endif
+    }
+
+    @MainActor
+    static func makeSigner(idNumber: String,
+                           open: @escaping @Sendable (URL) async -> Bool) -> (any ZKHolderSigning)? {
+        makeSigner(idNumber: idNumber,
+                   transport: TWFidOTransportSelection.automatic(),
+                   open: open)
     }
 
     static func makeRunner(directory: URL,

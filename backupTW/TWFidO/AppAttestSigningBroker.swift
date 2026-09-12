@@ -14,6 +14,7 @@ import Security
 
 enum SigningBrokerClientError: Error, Equatable, Sendable {
     case configurationMissing
+    case remotePushUnavailable
     case appAttestUnsupported
     case appAttestUnavailable
     case appAttestKeyInvalid
@@ -25,6 +26,10 @@ enum SigningBrokerClientError: Error, Equatable, Sendable {
 extension SigningBrokerClientError: LocalizedError {
     var errorDescription: String? {
         switch self {
+        case .remotePushUnavailable:
+            return NSLocalizedString(
+                "Remote approval is not available in this version. To sign, use Bonds on a device with 行動自然人憑證 installed.",
+                comment: "remote signing is not enabled")
         case .invalidTimeLimit:
             return NSLocalizedString("The signing request has an invalid time limit.", comment: "signing broker")
         case .server(let code, _):
@@ -44,8 +49,9 @@ extension SigningBrokerClientError: LocalizedError {
 struct SigningBrokerEndpointConfiguration: Equatable, Sendable {
     let baseURL: URL
     let keyScope: String
+    let supportsPushSigning: Bool
 
-    init(baseURL: URL, keyScope: String? = nil) throws {
+    init(baseURL: URL, keyScope: String? = nil, supportsPushSigning: Bool = false) throws {
         guard let components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false),
               components.scheme == "https",
               components.host?.isEmpty == false,
@@ -59,6 +65,7 @@ struct SigningBrokerEndpointConfiguration: Equatable, Sendable {
         }
         self.baseURL = baseURL
         self.keyScope = keyScope ?? baseURL.absoluteString
+        self.supportsPushSigning = supportsPushSigning
     }
 
     /// Runtime configuration remains absent until a reviewed endpoint is
@@ -75,7 +82,11 @@ struct SigningBrokerEndpointConfiguration: Equatable, Sendable {
                 host == "signing-uat.mashbean.net" else {
             return nil
         }
-        return try? Self(baseURL: url)
+        // Enable only in a code-signed build after the selected broker's push
+        // contract and Release device flow have been verified. Existing brokers
+        // reject the additional transport field, even for app-to-app signing.
+        return try? Self(baseURL: url, supportsPushSigning:
+            bundle.object(forInfoDictionaryKey: "BondsSigningBrokerSupportsPush") as? Bool == true)
     }
 }
 
@@ -374,7 +385,13 @@ actor AppAttestSigningBrokerTransport: SigningBrokerTransport {
 
     func start(idNumber: String,
                intent: SigningBrokerIntent,
+               transport: TWFidOTransport,
                timeLimit: Int) async throws -> SigningBrokerStart {
+        guard transport != .push || configuration.supportsPushSigning else {
+            // Refuse before key registration, assertions or sending identity
+            // data; an unavailable push must never turn into a silent app handoff.
+            throw SigningBrokerClientError.remotePushUnavailable
+        }
         guard TWFidOClient.allowedTimeLimits.contains(timeLimit) else {
             throw SigningBrokerClientError.invalidTimeLimit(timeLimit)
         }
@@ -383,6 +400,7 @@ actor AppAttestSigningBrokerTransport: SigningBrokerTransport {
         do {
             let result = try await startSerialized(idNumber: idNumber,
                                                    intent: intent,
+                                                   transport: transport,
                                                    requestID: requestID)
             await gate.release()
             return result
@@ -390,6 +408,15 @@ actor AppAttestSigningBrokerTransport: SigningBrokerTransport {
             await gate.release()
             throw error
         }
+    }
+
+    func start(idNumber: String,
+               intent: SigningBrokerIntent,
+               timeLimit: Int) async throws -> SigningBrokerStart {
+        try await start(idNumber: idNumber,
+                        intent: intent,
+                        transport: .appToApp,
+                        timeLimit: timeLimit)
     }
 
     func poll(sessionToken: String) async throws -> TWFidOSignResult? {
@@ -444,14 +471,18 @@ actor AppAttestSigningBrokerTransport: SigningBrokerTransport {
 
     private func startSerialized(idNumber: String,
                                  intent: SigningBrokerIntent,
+                                 transport: TWFidOTransport,
                                  requestID: String) async throws -> SigningBrokerStart {
         try await withKeyRecovery { keyID in
             let intentValue = try Self.intentValue(intent)
-            let business: [String: Any] = [
+            var business: [String: Any] = [
                 "id_number": idNumber,
                 "intent": intentValue,
                 "key_id": keyID
             ]
+            // An omitted transport means app-to-app in both broker contracts.
+            // Preserve the old wire body AND assertion hash for that path.
+            if transport == .push { business["transport"] = transport.rawValue }
             let challenge = try await assertionChallenge(keyID: keyID)
             let clientData = try Self.canonicalJSON([
                 "api_version": "v1",
@@ -468,16 +499,60 @@ actor AppAttestSigningBrokerTransport: SigningBrokerTransport {
             body["assertion_object"] = assertion.base64EncodedString()
             let response: StartResponse = try await post(path: Self.startPath, body: body)
             guard Self.validSessionToken(response.sessionToken),
-                  let deepLink = URL(string: response.deepLink),
-                  let transactionID = Self.transactionID(from: deepLink),
                   let expiresAt = Self.parseDate(response.expiresAt),
                   expiresAt > now() else {
                 throw SigningBrokerClientError.invalidResponse
             }
+            let deepLink: URL?
+            if let rawDeepLink = response.deepLink {
+                guard let parsed = URL(string: rawDeepLink) else {
+                    throw SigningBrokerClientError.invalidResponse
+                }
+                deepLink = parsed
+            } else {
+                deepLink = nil
+            }
+
+            let transactionID: String
+            switch transport {
+            case .appToApp:
+                // An app-to-app start is usable only with a valid MOICA deep
+                // link. The body ID is optional for compatibility, but when
+                // present it must bind to the exact ID encoded in rtn_val.
+                guard let deepLink,
+                      let deepLinkTransactionID = Self.transactionID(from: deepLink) else {
+                    throw SigningBrokerClientError.invalidResponse
+                }
+                if let bodyTransactionID = response.transactionID {
+                    guard Self.validTransactionID(bodyTransactionID),
+                          bodyTransactionID == deepLinkTransactionID else {
+                        throw SigningBrokerClientError.invalidResponse
+                    }
+                }
+                transactionID = deepLinkTransactionID
+            case .push:
+                // Push is intentionally callback-free. Any deep link in a push
+                // response is a cross-transport response and fails closed.
+                guard deepLink == nil,
+                      let bodyTransactionID = response.transactionID,
+                      Self.validTransactionID(bodyTransactionID) else {
+                    throw SigningBrokerClientError.invalidResponse
+                }
+                transactionID = bodyTransactionID
+            }
+            let delivery: TWFidOSignDelivery
+            switch transport {
+            case .appToApp:
+                guard let deepLink else { throw SigningBrokerClientError.invalidResponse }
+                delivery = .appToApp(deepLink)
+            case .push:
+                guard deepLink == nil else { throw SigningBrokerClientError.invalidResponse }
+                delivery = .push
+            }
             return SigningBrokerStart(sessionToken: response.sessionToken,
                                       transactionID: transactionID,
-                                      deepLink: deepLink,
-                                      expiresAt: expiresAt)
+                                      expiresAt: expiresAt,
+                                      delivery: delivery)
         }
     }
 
@@ -768,14 +843,20 @@ actor AppAttestSigningBrokerTransport: SigningBrokerTransport {
         guard deepLink.scheme?.lowercased() == "mobilemoica",
               let encoded = URLComponents(url: deepLink, resolvingAgainstBaseURL: false)?
                 .queryItems?.first(where: { $0.name == "rtn_val" })?.value,
-              !encoded.isEmpty, encoded.utf8.count <= 512,
+              !encoded.isEmpty, encoded.utf8.count <= 1024,
               let data = base64URLData(encoded),
               let value = String(data: data, encoding: .utf8),
-              !value.isEmpty, value.utf8.count <= 256,
-              value.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }) else {
+              validTransactionID(value) else {
             return nil
         }
         return value
+    }
+
+    private static func validTransactionID(_ value: String) -> Bool {
+        !value.isEmpty && value.utf8.count <= 256
+            && value.unicodeScalars.allSatisfy {
+                !CharacterSet.controlCharacters.contains($0)
+            }
     }
 
     private static func isDeviceCheck(_ error: Error, code: DCError.Code) -> Bool {
@@ -815,11 +896,13 @@ private struct VerificationResponse: Decodable {
 
 private struct StartResponse: Decodable {
     let sessionToken: String
-    let deepLink: String
+    let transactionID: String?
+    let deepLink: String?
     let expiresAt: String
 
     enum CodingKeys: String, CodingKey {
         case sessionToken = "session_token"
+        case transactionID = "transaction_id"
         case deepLink = "deep_link"
         case expiresAt = "expires_at"
     }

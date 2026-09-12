@@ -8,6 +8,18 @@
 import Foundation
 import UIKit
 
+/// Chooses delivery on the main actor because querying UIApplication is a
+/// UIKit operation. Resolve this before detached issuance work starts.
+@MainActor
+enum TWFidOTransportSelection {
+    static func automatic(canOpenMobileMoica: @MainActor (URL) -> Bool = { url in
+        UIApplication.shared.canOpenURL(url)
+    }) -> TWFidOTransport {
+        let url = URL(string: "mobilemoica://")!
+        return canOpenMobileMoica(url) ? .appToApp : .push
+    }
+}
+
 // MARK: - Errors
 
 enum CredentialIssuanceError: Error, Equatable {
@@ -162,7 +174,7 @@ struct CredentialIssuance {
             try credential.jwsCompactSerialization(signedBy: $0, issuerDID: subjectDID)
         }
 
-        let started: (handle: TWFidOSignHandle, deepLink: URL)
+        let started: TWFidOSignStart
         do {
             started = try await session.begin(idNumber: idNumber,
                                               hint: hint,
@@ -174,12 +186,20 @@ struct CredentialIssuance {
             throw CredentialIssuanceError.signingFailed(message: Self.message(for: error))
         }
 
-        guard await open(started.deepLink) else {
-            throw CredentialIssuanceError.certificateAppUnavailable
+        let hasLocalCallback: Bool
+        switch started.delivery {
+        case .appToApp(let deepLink):
+            guard await open(deepLink) else {
+                throw CredentialIssuanceError.certificateAppUnavailable
+            }
+            hasLocalCallback = true
+        case .push:
+            hasLocalCallback = false
         }
 
         let result = try await awaitResult(
             handle: started.handle,
+            hasLocalCallback: hasLocalCallback,
             deadline: started.handle.deadline(
                 fallback: now().addingTimeInterval(TimeInterval(timeLimit))))
 
@@ -220,6 +240,7 @@ struct CredentialIssuance {
     /// ATH-02 response. `cancelWait` runs on every exit because the router parks
     /// the continuation in a dictionary and nothing else would resume it.
     private func awaitResult(handle: TWFidOSignHandle,
+                             hasLocalCallback: Bool,
                              deadline: Date) async throws -> TWFidOSignResult {
         // Set when a poll fails at the transport layer, because the deadline
         // then means something different: not "the holder never approved" but
@@ -249,15 +270,19 @@ struct CredentialIssuance {
                                           : CredentialIssuanceError.timedOut
             }
 
-            let callbacks = self.callbacks
-            let sleep = self.sleep
-            let interval = self.pollInterval
-            await withTaskGroup(of: Void.self) { group in
-                group.addTask { try? await sleep(interval) }
-                group.addTask { await callbacks.waitForCallback(transactionID: handle.transactionID) }
-                await group.next()
-                await callbacks.cancelWait(transactionID: handle.transactionID)
-                group.cancelAll()
+            if hasLocalCallback {
+                let callbacks = self.callbacks
+                let sleep = self.sleep
+                let interval = self.pollInterval
+                await withTaskGroup(of: Void.self) { group in
+                    group.addTask { try? await sleep(interval) }
+                    group.addTask { await callbacks.waitForCallback(transactionID: handle.transactionID) }
+                    await group.next()
+                    await callbacks.cancelWait(transactionID: handle.transactionID)
+                    group.cancelAll()
+                }
+            } else {
+                try await sleep(pollInterval)
             }
         }
     }
@@ -306,7 +331,8 @@ enum CredentialIssuanceAssembly {
 
     /// `nil` when this build cannot reach TW FidO at all, so the screen can say
     /// so before the holder waits for a prompt that will never arrive.
-    static func make() -> CredentialIssuance? {
+    static func make(transport: TWFidOTransport) -> CredentialIssuance? {
+        let chosenTransport = transport
         #if DEBUG
         guard let returnURL = URL(string: "\(MOICACallbackRouter.scheme)://twfido-sign") else {
             return nil
@@ -314,14 +340,14 @@ enum CredentialIssuanceAssembly {
         let client = TWFidOClient(configuration: .production,
                                   credentials: DevelopmentSPCredentialProvider())
         return CredentialIssuance(
-            session: LiveTWFidOSignSession(client: client, returnURL: returnURL),
+            session: LiveTWFidOSignSession(client: client, transport: chosenTransport, returnURL: returnURL),
             open: { url in
                 await MainActor.run { UIApplication.shared.canOpenURL(url) }
                     ? await UIApplication.shared.open(url)
                     : false
             })
         #else
-        guard let session = SigningBrokerSessionAssembly.make() else { return nil }
+        guard let session = SigningBrokerSessionAssembly.make(transport: chosenTransport) else { return nil }
         return CredentialIssuance(
             session: session,
             open: { url in
@@ -330,5 +356,10 @@ enum CredentialIssuanceAssembly {
                     : false
             })
         #endif
+    }
+
+    @MainActor
+    static func make() -> CredentialIssuance? {
+        make(transport: TWFidOTransportSelection.automatic())
     }
 }
