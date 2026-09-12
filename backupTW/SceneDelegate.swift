@@ -317,13 +317,13 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 self.window = window
                 return
             }
-            if ProcessInfo.processInfo.environment["BONDSTW_UI_TEST_FORMAL_DOCUMENT_PREVIEW"] == "1" {
+            if let previewMode = ProcessInfo.processInfo.environment["BONDSTW_UI_TEST_FORMAL_DOCUMENT_PREVIEW"] {
                 let preview = MyDataOnboardViewController()
                 let navigation = UINavigationController(rootViewController: preview)
                 window.rootViewController = navigation
                 window.makeKeyAndVisible()
                 preview.loadViewIfNeeded()
-                preview.seedSuccessfulNationalIDPreviewForUITest()
+                preview.seedSuccessfulNationalIDPreviewForUITest(completed: previewMode != "review")
                 self.window = window
                 return
             }
