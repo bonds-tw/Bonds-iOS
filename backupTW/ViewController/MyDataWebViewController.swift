@@ -271,7 +271,13 @@ extension MyDataWebViewController : WKNavigationDelegate {
             if UIApplication.shared.canOpenURL(url) {
                 openedCertificateApp = true
                 updateGuide(.certificate)
-                UIApplication.shared.open(url)
+                UIApplication.shared.open(url, options: [:]) { [weak self] opened in
+                    guard !opened else { return }
+                    self?.openedCertificateApp = false
+                    self?.presentCertificateOpenFailure()
+                }
+            } else {
+                presentCertificateOpenFailure()
             }
             decisionHandler(.cancel)
             return
@@ -570,6 +576,16 @@ extension MyDataWebViewController : WKDownloadDelegate {
         self.present(alert, animated: true)
     }
 
+    private func presentCertificateOpenFailure() {
+        let alert = UIAlertController(title: NSLocalizedString("Could not open 行動自然人憑證", comment: ""), message: NSLocalizedString("Install and activate 行動自然人憑證 on this iPhone, then retry from the MyData page. If MyData offers another supported authentication method, you can choose it there. Your page is still open.", comment: ""), preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Return to MyData", comment: ""), style: .default))
+        present(alert, animated: true)
+    }
+
+    static func normalizedDocumentPassword(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+    }
+
     private func unzipWithPassword(of pdf: PDFDocument, didFail: Bool) {
         let title = didFail ?
         NSLocalizedString("Unzipping failed (wrong password). Please enter the correct National ID number.", comment: "")
@@ -577,7 +593,7 @@ extension MyDataWebViewController : WKDownloadDelegate {
         NSLocalizedString("Please enter the National ID number (unzipping password)", comment: "")
         let alert = UIAlertController(
             title: title,
-            message: NSLocalizedString("For this unzipping only, not to be used for any other purpose.", comment: ""),
+            message: NSLocalizedString("Enter your National ID number to unlock this MyData PDF, not your certificate PIN. The first letter is uppercase. Used only for this file on this iPhone.", comment: ""),
             preferredStyle: .alert)
         // `[weak alert, weak self]`, and both halves matter.
         //
@@ -604,7 +620,8 @@ extension MyDataWebViewController : WKDownloadDelegate {
                 else {
                     return
                 }
-                let success = pdf.unlock(withPassword: password)
+                let success = pdf.unlock(withPassword: Self.normalizedDocumentPassword(password))
+                passwordTextField.text = nil
                 if success {
                     if let nationalIDModel = self.parseUnencryptedPDF(pdf) {
                         self.completion(.nationalID(nationalIDModel))
@@ -624,7 +641,15 @@ extension MyDataWebViewController : WKDownloadDelegate {
             }
         alert.addTextField { textField in
             textField.placeholder = NSLocalizedString("Input National ID number (unzipping password)", comment: "")
+            textField.isSecureTextEntry = true
+            textField.autocapitalizationType = .allCharacters
+            textField.autocorrectionType = .no
+            textField.keyboardType = .asciiCapable
         }
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel) { [weak alert, weak self] _ in
+            alert?.textFields?.first?.text = nil
+            self?.closeFlow()
+        })
         alert.addAction(confirm)
         self.present(alert, animated: true)
     }

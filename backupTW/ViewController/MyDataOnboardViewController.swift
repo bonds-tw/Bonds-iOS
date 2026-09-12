@@ -15,26 +15,15 @@ class MyDataOnboardViewController: UICollectionViewController {
         case cover, guidance, profile, data
     }
     private var dataSource: UICollectionViewDiffableDataSource<Section, Item>!
-    /// # Why the cover states the build's limit before anything is spent
-    ///
-    /// `CredentialIssuanceAssembly.make()` returns nil in a release build, and
-    /// that is a compile-time fact. The screen only found out at
-    /// `issueCredential(for:)` — by which point the holder had authenticated to
-    /// a government service, downloaded their entire household record, and typed
-    /// their 身分證統一編號 into a decryption box.
-    ///
-    /// **The cost of the late answer is not bandwidth, it is identity data.**
-    /// `ZKProofViewController` already wrote this principle down; it had just
-    /// never been applied to this path.
+    /// Block unavailable builds before requesting identity data.
     private var coverItem: Item
     private var items: [Item]
+    private var parsedModel: NationalIDModel?
+    private var signingInProgress = false
+    private var checkingReadiness = false
+    private var signingTask: Task<Void, Never>?
 
-    /// Which document this run fetches and stores. Defaults to the national ID (the
-    /// historical single-document flow). A vault import passes its own type, so the
-    /// signed result is stored under that type's id and surfaces in the 資料保險箱
-    /// rather than as the national ID. The MyData fetch mechanism (行動自然人憑證 →
-    /// the household record) is shared: vault documents reuse the national ID's path
-    /// and data until each gets its own (「路徑與身分證資料一致」).
+    /// National ID creation signs parsed details; other imports archive the original.
     private let documentType: MyDataDocumentType
 
     private var isNationalID: Bool { documentType.id == MyDataDocumentRegistry.nationalID.id }
@@ -55,13 +44,16 @@ class MyDataOnboardViewController: UICollectionViewController {
                  secondaryText: NSLocalizedString("The MyData page stays open and continues after the signature.", comment: "MyData flow step"),
                  identifier: "mydata.step.return"),
         ]
-        let finalText = documentType.estimatedMinutes.map {
+        let finalText = isNationalID ? NSLocalizedString("Download your details, unlock the PDF if asked, and review them in Bonds before signing.", comment: "") : documentType.estimatedMinutes.map {
             String(format: NSLocalizedString("This document may take about %lld minutes. You can leave and later continue from MyData personal documents.", comment: "MyData slow document step"), Int64($0))
         } ?? NSLocalizedString("Download the completed file; it is then sealed in the data vault.", comment: "MyData flow step")
         rows.append(Item(image: UIImage(systemName: "4.circle.fill"),
                          title: NSLocalizedString("Download or continue later", comment: "MyData flow step"),
                          secondaryText: finalText,
                          identifier: "mydata.step.download"))
+        if isNationalID {
+            rows.append(Item(image: UIImage(systemName: "5.circle.fill"), title: NSLocalizedString("Sign and create card", comment: ""), secondaryText: NSLocalizedString("Approve a separate Bonds signature in 行動自然人憑證. Return to Bonds and wait for the card-saved confirmation.", comment: ""), identifier: "mydata.step.sign"))
+        }
         return rows
     }
 
@@ -81,8 +73,8 @@ class MyDataOnboardViewController: UICollectionViewController {
         if documentType.id == MyDataDocumentRegistry.nationalID.id {
             self.coverItem = CredentialIssuanceAssembly.isAvailable
                 ? Item(image: Self.statusImage("person.text.rectangle", colour: .tintColor),
-                       title: NSLocalizedString("Create a Valid Document", comment: ""),
-                       secondaryText: NSLocalizedString("You will use TW FiDO to retrieve your National ID data, and create a valid document.", comment: ""))
+                       title: NSLocalizedString("Create my card from MyData", comment: ""),
+                       secondaryText: NSLocalizedString("First authorize MyData to download your details. Then review them and sign separately to create your Bonds card. This does not replace a government-issued ID.", comment: ""))
                 : Item(image: Self.statusImage("xmark.shield.fill", colour: .systemOrange),
                        title: NSLocalizedString("This version cannot create a document", comment: ""),
                        secondaryText: NSLocalizedString("Signing needs a service this build cannot reach, so the document could not be created even after fetching your data. Nothing is fetched.", comment: ""))
@@ -122,24 +114,10 @@ class MyDataOnboardViewController: UICollectionViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        title = isNationalID ? NSLocalizedString("Valid Document", comment: "") : documentType.title
+        title = isNationalID ? NSLocalizedString("Create my card", comment: "") : documentType.title
         navigationController?.navigationBar.prefersLargeTitles = true
         navigationItem.leftBarButtonItem = UIBarButtonItem(barButtonSystemItem: .cancel, target: self, action: #selector(cancel))
-        // # The button obeys the same fact the cover states
-        //
-        // The cover says 「因此不會去抓」 when this build cannot sign. That
-        // sentence was added and **the button was not**, so pressing Continue
-        // walked the person through the entire MyData flow — a full household
-        // record downloaded, their 身分證統一編號 typed into a decryption prompt,
-        // five identity fields on screen — before `issueCredential` reached
-        // `CredentialIssuanceAssembly.make()` and gave up. Identity data spent,
-        // nothing kept: the only `save` sits *after* `issue(...)`, which a
-        // release build never reaches.
-        //
-        // The same commit got this right one screen over
-        // (`ZKProofViewController` returns a row with `isEnabled: false`), so
-        // this was an asymmetry inside one change rather than a policy. Copy and
-        // behaviour each looked reasonable alone, which is exactly the shape.
+        // Configuration is checked here; live service acceptance is checked on Continue.
         let proceed = UIBarButtonItem(title: NSLocalizedString("Continue", comment: ""),
                                       style: .done, target: self, action: #selector(nextAction))
         proceed.isEnabled = canProceed
@@ -153,7 +131,7 @@ class MyDataOnboardViewController: UICollectionViewController {
 
     private func configureDataSource() {
         let cellRegistration = UICollectionView.CellRegistration<UICollectionViewListCell, Item> { cell, indexPath, item in
-            let section = Section(rawValue: indexPath.section)
+            let section = self.dataSource.sectionIdentifier(for: indexPath.section)
             let isCover = section == .cover
             // The household address is structurally a long field, even when a
             // particular test value happens to be short.  Keeping it in the
@@ -213,7 +191,7 @@ class MyDataOnboardViewController: UICollectionViewController {
         }
         let headerRegistration = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(elementKind: UICollectionView.elementKindSectionHeader) { headerView, elementKind, indexPath in
             var content = headerView.defaultContentConfiguration()
-            switch Section(rawValue: indexPath.section) {
+            switch self.dataSource.sectionIdentifier(for: indexPath.section) {
             case .guidance:
                 content.text = NSLocalizedString("What happens next", comment: "MyData guidance header")
             case .profile:
@@ -227,7 +205,7 @@ class MyDataOnboardViewController: UICollectionViewController {
         }
         let footerRegistration = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(elementKind: UICollectionView.elementKindSectionFooter) { footerView, elementKind, indexPath in
             var content = footerView.defaultContentConfiguration()
-            switch Section(rawValue: indexPath.section) {
+            switch self.dataSource.sectionIdentifier(for: indexPath.section) {
             case .profile:
                 content.text = NSLocalizedString("Remembered details are stored in the iOS Keychain on this iPhone and filled only on mydata.nat.gov.tw.", comment: "MyData profile footer")
             case .data:
@@ -256,7 +234,7 @@ class MyDataOnboardViewController: UICollectionViewController {
         var snapshot = NSDiffableDataSourceSnapshot<Section, Item>()
         snapshot.appendSections([.cover])
         snapshot.appendItems([coverItem])
-        if !flowIsFinished {
+        if !flowIsFinished && parsedModel == nil {
             snapshot.appendSections([.guidance])
             snapshot.appendItems(guidanceItems)
             snapshot.appendSections([.profile])
@@ -271,19 +249,25 @@ class MyDataOnboardViewController: UICollectionViewController {
 
     override func collectionView(_ collectionView: UICollectionView,
                                  shouldSelectItemAt indexPath: IndexPath) -> Bool {
-        Section(rawValue: indexPath.section) == .profile
+        dataSource.sectionIdentifier(for: indexPath.section) == .profile
     }
 
     override func collectionView(_ collectionView: UICollectionView,
                                  didSelectItemAt indexPath: IndexPath) {
         collectionView.deselectItem(at: indexPath, animated: true)
-        guard Section(rawValue: indexPath.section) == .profile else { return }
+        guard dataSource.sectionIdentifier(for: indexPath.section) == .profile else { return }
         navigationController?.pushViewController(
             MyDataProfileViewController { [weak self] in self?.applySnapshot() }, animated: true)
     }
 
     @objc private func cancel() {
-        dismiss(animated: true)
+        guard !signingInProgress else { return }
+        if parsedModel != nil && !flowIsFinished {
+            let alert = UIAlertController(title: NSLocalizedString("Discard this card draft?", comment: ""), message: NSLocalizedString("These details are only kept for this visit. Leaving now means downloading them again next time.", comment: ""), preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: NSLocalizedString("Keep reviewing", comment: ""), style: .cancel))
+            alert.addAction(UIAlertAction(title: NSLocalizedString("Discard", comment: ""), style: .destructive) { [weak self] _ in self?.dismiss(animated: true) })
+            present(alert, animated: true)
+        } else { dismiss(animated: true) }
     }
 
     @objc private func nextAction() {
@@ -291,7 +275,32 @@ class MyDataOnboardViewController: UICollectionViewController {
         // is what holds if some future path invokes the action another way —
         // a keyboard shortcut, a restored state, a test. The thing being
         // guarded is somebody's national ID number, so it is guarded twice.
-        guard canProceed else { return }
+        guard canProceed, !checkingReadiness else { return }
+        guard isNationalID else { openMyData(); return }
+        checkingReadiness = true
+        navigationItem.rightBarButtonItem?.isEnabled = false
+        navigationItem.rightBarButtonItem?.title = NSLocalizedString("Checking service…", comment: "")
+        Task { [weak self] in
+            do {
+                try await SigningReadiness.check()
+                guard let self else { return }
+                self.checkingReadiness = false
+                self.navigationItem.rightBarButtonItem?.isEnabled = true
+                self.navigationItem.rightBarButtonItem?.title = NSLocalizedString("Continue", comment: "")
+                guard self.viewIfLoaded?.window != nil else { return }
+                self.openMyData()
+            } catch {
+                guard let self else { return }
+                self.checkingReadiness = false
+                self.navigationItem.rightBarButtonItem?.isEnabled = true
+                self.navigationItem.rightBarButtonItem?.title = NSLocalizedString("Try again", comment: "")
+                self.coverItem = Item(image: Self.statusImage("exclamationmark.triangle.fill", colour: .systemOrange), title: NSLocalizedString("Cannot start card creation", comment: ""), secondaryText: error.localizedDescription)
+                self.applySnapshot()
+            }
+        }
+    }
+
+    private func openMyData() {
 
         // The web controller resolves the entry URL from the document's item path
         // (guarded non-nil upstream) and archives the original for vault documents.
@@ -300,7 +309,6 @@ class MyDataOnboardViewController: UICollectionViewController {
             switch result {
             case .nationalID(let nationalIDModel):
                 self.showParsedDocument(nationalIDModel)
-                self.issueCredential(for: nationalIDModel)
             case .vaultDocument(let entry):
                 self.finishVaultImport(entry)
             }
@@ -339,23 +347,15 @@ class MyDataOnboardViewController: UICollectionViewController {
         applySnapshot()
     }
 
-    /// Puts the parsed fields on screen before the credential exists.
-    ///
-    /// Split out from issuance because the two can fail independently: MyData
-    /// gave us the document either way, and the user should see it rather than an
-    /// empty list while the device signs. The cover row carries the state of the
-    /// signing, so it starts as "in progress" and is corrected by
-    /// `finishIssuance(_:)`.
-    private func showParsedDocument(_ nationalIDModel: NationalIDModel) {
+    /// Download success requires a separate review and explicit signature.
+    func showParsedDocument(_ nationalIDModel: NationalIDModel) {
+        parsedModel = nationalIDModel
+        isModalInPresentation = true
+        navigationController?.isModalInPresentation = true
         coverItem = Item(
             image: Self.statusImage("signature", colour: .tintColor),
-            title: NSLocalizedString("Waiting for you to sign in 行動自然人憑證", comment: ""),
-            // The wait is not this app's — it is a hand-off to another app and
-            // back, and a screen that said only 「處理中」 would leave somebody
-            // watching a spinner while the prompt they need to tap sits behind
-            // it.
-            secondaryText: NSLocalizedString("Your certificate signs these details, which is what lets anyone checking them see that you are the one making the claim.",
-                                             comment: ""))
+            title: NSLocalizedString("Review your downloaded details", comment: ""),
+            secondaryText: NSLocalizedString("MyData authorization is complete. Your Bonds card is not created yet. Check these details, then approve a separate signature in 行動自然人憑證 and return here.", comment: ""))
         items = [
             Item(title: NSLocalizedString("Nationality", comment: ""),
                  secondaryText: nationalIDModel.nationality ?? NSLocalizedString("Unknown", comment: "")),
@@ -369,12 +369,32 @@ class MyDataOnboardViewController: UICollectionViewController {
                  secondaryText: nationalIDModel.addressOfHousehold ?? NSLocalizedString("Unknown", comment: "")),
         ]
         applySnapshot()
-        navigationItem.leftBarButtonItem = nil
-        // Deliberately left enabled while signing runs. Disabling it would make a
-        // slow Keychain call into a modal the user cannot leave; letting them
-        // dismiss costs nothing, because issuance does not need this screen to
-        // finish — it only needs it to report.
-        navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .done, target: self, action: #selector(cancel))
+        navigationItem.leftBarButtonItem = UIBarButtonItem(barButtonSystemItem: .cancel, target: self, action: #selector(cancel))
+        navigationItem.rightBarButtonItem = UIBarButtonItem(title: NSLocalizedString("Sign and create card", comment: ""), style: .done, target: self, action: #selector(startSigning))
+    }
+
+    @objc private func startSigning() {
+        guard !signingInProgress, let model = parsedModel else { return }
+        signingInProgress = true
+        navigationItem.leftBarButtonItem = UIBarButtonItem(title: NSLocalizedString("Stop waiting", comment: ""), style: .plain, target: self, action: #selector(stopWaiting))
+        navigationItem.rightBarButtonItem = nil
+        coverItem = Item(image: Self.statusImage("signature", colour: .tintColor), title: NSLocalizedString("Waiting for you to sign in 行動自然人憑證", comment: ""), secondaryText: NSLocalizedString("Approve the Bonds card signature, then return here. Wait for the saved confirmation. This can take up to 10 minutes; keep Bonds open.", comment: ""))
+        applySnapshot()
+        issueCredential(for: model)
+    }
+
+    @objc private func stopWaiting() {
+        let alert = UIAlertController(title: NSLocalizedString("Stop waiting for this signature?", comment: ""), message: NSLocalizedString("This stops Bonds from waiting. It does not cancel the request in 行動自然人憑證. Cancel that request there before starting another signature.", comment: ""), preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Keep waiting", comment: ""), style: .cancel))
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Stop waiting", comment: ""), style: .destructive) { [weak self] _ in self?.signingTask?.cancel() })
+        present(alert, animated: true)
+    }
+
+    @objc private func retrySigning() {
+        let alert = UIAlertController(title: NSLocalizedString("Start a new signature?", comment: ""), message: NSLocalizedString("The previous attempt did not save a card. If a request is still visible in 行動自然人憑證, cancel it or wait for it to expire first. Your downloaded details will be reused without another MyData download.", comment: ""), preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Start new signature", comment: ""), style: .default) { [weak self] _ in self?.startSigning() })
+        present(alert, animated: true)
     }
 
     /// Turns the parsed document into a credential this device has signed, and
@@ -396,11 +416,8 @@ class MyDataOnboardViewController: UICollectionViewController {
         // detached task below. A missing local app selects remote push.
         let selectedTransport = TWFidOTransportSelection.automatic()
 
-        // Detached rather than a child of any screen's task: issuance is a round
-        // trip out to 行動自然人憑證 and back, and if the user taps Done in the
-        // middle of it the credential should still be saved. Only the reporting
-        // needs the screen, and that is what the weak reference is for.
-        Task.detached(priority: .userInitiated) { [weak self] in
+        // Key creation and storage stay off the main actor. Cancellation keeps the review screen.
+        signingTask = Task.detached(priority: .userInitiated) { [weak self] in
             // `Result(catching:)` has no `async` overload, so the two arms are
             // written out rather than smuggled through a synchronous closure.
             let result: Result<Void, Error>
@@ -426,6 +443,7 @@ class MyDataOnboardViewController: UICollectionViewController {
                     let signed = try await issuance.issue(nationalIDModel,
                                                           subjectDID: subjectDID,
                                                           issuerKey: documentKey)
+                    try Task.checkCancellation()
                     try CredentialStore().save(jws: try signed.serialized(), id: credentialID)
                 } catch {
                     Self.destroyProvisionalKey(documentKey, in: keyring)
@@ -447,13 +465,19 @@ class MyDataOnboardViewController: UICollectionViewController {
         }
     }
 
-    private func finishIssuance(_ result: Result<Void, Error>) {
+    func finishIssuance(_ result: Result<Void, Error>) {
+        signingInProgress = false
+        signingTask = nil
         switch result {
         case .success:
             flowIsFinished = true
+            navigationController?.isModalInPresentation = false
+            isModalInPresentation = false
+            navigationItem.leftBarButtonItem = nil
+            navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .done, target: self, action: #selector(cancel))
             coverItem = Item(
                 image: Self.statusImage("checkmark.seal.fill", colour: .systemGreen),
-                title: NSLocalizedString("The valid document has been created", comment: ""),
+                title: NSLocalizedString("Your card has been saved", comment: ""),
                 secondaryText: "")
         case .failure(let error):
             // The five fields below are still on screen and still correct — what
@@ -466,8 +490,10 @@ class MyDataOnboardViewController: UICollectionViewController {
             coverItem = Item(
                 image: Self.statusImage("exclamationmark.triangle.fill", colour: .systemOrange),
                 title: NSLocalizedString("The document could not be signed", comment: ""),
-                secondaryText: error.localizedDescription)
-            presentIssuanceFailure(error)
+                secondaryText: error is CancellationError ? NSLocalizedString("Waiting stopped. No card was saved by this attempt. Cancel any pending request in 行動自然人憑證 before retrying.", comment: "") : error.localizedDescription)
+            navigationItem.leftBarButtonItem = UIBarButtonItem(barButtonSystemItem: .cancel, target: self, action: #selector(cancel))
+            navigationItem.rightBarButtonItem = UIBarButtonItem(title: NSLocalizedString("Retry signing", comment: ""), style: .done, target: self, action: #selector(retrySigning))
+            if !(error is CancellationError) { presentIssuanceFailure(error) }
         }
         applySnapshot()
     }
@@ -494,7 +520,7 @@ class MyDataOnboardViewController: UICollectionViewController {
     /// A deterministic, non-personal fixture for layout and screenshot tests.
     /// It exercises the same post-signing state that previously expanded into a
     /// broken hero card on real devices.
-    func seedSuccessfulNationalIDPreviewForUITest() {
+    func seedSuccessfulNationalIDPreviewForUITest(completed: Bool = true) {
         guard isNationalID else { return }
         showParsedDocument(NationalIDModel(
             nationality: "中華民國（臺灣）",
@@ -502,7 +528,7 @@ class MyDataOnboardViewController: UICollectionViewController {
             name: "版面測試",
             birthdate: "民國 100 年 01 月 01 日",
             addressOfHousehold: "測試市測試區第一里第二鄰測試路三段四十二巷五號十二樓之十"))
-        finishIssuance(.success(()))
+        if completed { finishIssuance(.success(())) }
     }
     #endif
 

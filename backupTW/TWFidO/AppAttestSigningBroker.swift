@@ -923,3 +923,34 @@ private struct ServerErrorResponse: Decodable {
     let error: String
     let retryable: Bool
 }
+
+// Readiness uses the same no-cookie, no-redirect network boundary as signing.
+extension SigningReadiness {
+    @MainActor
+    static func check() async throws {
+        #if DEBUG
+        // Development builds use the direct provider, not the Release broker.
+        return
+        #else
+        guard let configuration = SigningBrokerEndpointConfiguration.fromBundle() else {
+            throw SigningBrokerClientError.configurationMissing
+        }
+        let transport = TWFidOTransportSelection.automatic()
+        if transport == .push && !configuration.supportsPushSigning {
+            throw SigningBrokerClientError.remotePushUnavailable
+        }
+        let sender = SigningBrokerURLSessionSender(baseURL: configuration.baseURL)
+        defer { sender.session.invalidateAndCancel() }
+        var request = URLRequest(url: configuration.baseURL.appendingPathComponent("v1/signatures/capabilities"))
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let (data, response) = try await sender.session.data(for: request)
+        guard (response as? HTTPURLResponse)?.statusCode == 200,
+              let readiness = try? JSONDecoder().decode(Self.self, from: data),
+              readiness.accepts(transport) else {
+            throw CredentialIssuanceError.signingUnavailable(message: NSLocalizedString("Card signing is currently unavailable. No MyData data has been requested. Try again later.", comment: ""))
+        }
+        try await AppAttestSigningBrokerTransport(configuration: configuration).verifyAppAttestConnection()
+        #endif
+    }
+}
