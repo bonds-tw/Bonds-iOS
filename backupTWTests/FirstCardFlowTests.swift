@@ -36,14 +36,9 @@ struct FirstCardFlowTests {
         #expect(MyDataWebViewController.normalizedDocumentPassword("  a123456789\n") == "A123456789")
     }
 
-    @Test func readinessRequiresBothOperationsAndSupportedTransport() {
-        #expect(SigningReadiness(version: 1, start_enabled: true, poll_enabled: true, transports: ["app_to_app"]).accepts(.appToApp))
-        for readiness in [
-            SigningReadiness(version: 1, start_enabled: false, poll_enabled: true, transports: ["app_to_app"]),
-            SigningReadiness(version: 1, start_enabled: true, poll_enabled: false, transports: ["app_to_app"]),
-            SigningReadiness(version: 2, start_enabled: true, poll_enabled: true, transports: ["app_to_app"]),
-            SigningReadiness(version: 1, start_enabled: true, poll_enabled: true, transports: [])
-        ] { #expect(!readiness.accepts(.appToApp)) }
-        #expect(!SigningReadiness(version: 1, start_enabled: true, poll_enabled: true, transports: ["app_to_app"]).accepts(.push))
+    @Test func vaultImportDoesNotRequireCardSigning() {
+        let vc = MyDataOnboardViewController(documentType: MyDataDocumentRegistry.personalDocuments)
+        vc.loadViewIfNeeded()
+        #expect(vc.navigationItem.rightBarButtonItem?.isEnabled == true)
     }
 }
