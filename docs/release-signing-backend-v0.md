@@ -7,6 +7,17 @@
 
 ## 決策
 
+### PR #65：相容性與推播啟用界線
+
+App 已具備 app-to-app／push 的獨立狀態機，但目前 broker 的既有 start 契約不接受 `transport`，也尚未完成 ATH-03 的後端實作與 Release 真機驗收。下文的 push 欄位與回應規則是待後端落實的契約，不代表遠端推播已可使用。
+
+- 同機簽章維持既有 wire format：省略 `transport`，App Attest business-body hash 也不包含該欄位。省略代表 app-to-app；不可只刪 JSON 欄位而保留新 hash。
+- Release broker push 預設關閉。只有受信任 endpoint 所在的 code-signed Info.plist 明確設定 `BondsSigningBrokerSupportsPush = true` 才允許發出 push start；目前專案不設定此旗標。
+- 關閉時在 App Attest 註冊、assertion 與傳送身分資料之前回報「此版本尚未開放跨裝置簽章」，不等待 callback、不開始輪詢、不自動改走同機簽章。
+- DEBUG 直接 MOICA client 仍可測試 push；這不是 Release broker 的驗收證據。
+- MyData 文件匯入維持不檢查本機 MobileMoica 安裝；官方 MyData 網頁的登入／確認方式依該頁指示，不能與後續憑證簽發的 broker 能力混為一談。
+- 啟用旗標前，後端須支援新欄位、canonical hash、冪等 transport 綁定、ATH-03 provider、push response；保留舊版 client 相容性，並以同一候選 Release／TestFlight build 實測同機與跨裝置 start→approve→poll→App 驗章。
+
 有備而來的出貨版本採用一個獨立的 `bonds-signing-broker`，專門代理行動自然人憑證 ATH-01（app-to-app）、ATH-03（push）與 ATH-02（result）：
 
 - SP service ID 與 AES-256 key 只存在後端；App 不得取得 `sp_checksum` 或 `idp_checksum` 的等價能力。

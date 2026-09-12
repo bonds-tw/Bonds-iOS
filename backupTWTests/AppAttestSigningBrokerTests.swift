@@ -239,13 +239,15 @@ struct AppAttestSigningBrokerTests {
         #expect(startBody["request_id"] as? String == "018f6c7e-1234-7123-8123-123456789abc")
         #expect(startBody["id_number"] as? String == "A123456789")
         #expect((startBody["intent"] as? [String: Any])?["type"] as? String == "zk_holding_proof_v1")
-        #expect(startBody["transport"] as? String == "app_to_app")
+        // The deployed broker accepts exactly these six fields. Omitting the
+        // transport also preserves its original assertion body hash.
+        #expect(Set(startBody.keys) == ["request_id", "id_number", "intent",
+                                        "key_id", "challenge", "assertion_object"])
 
         let business: [String: Any] = [
             "id_number": "A123456789",
             "intent": ["type": "zk_holding_proof_v1"],
-            "key_id": brokerKeyID,
-            "transport": "app_to_app"
+            "key_id": brokerKeyID
         ]
         let businessHash = SHA256.hash(data: try AppAttestSigningBrokerTransport.canonicalJSON(business)).hex
         let expectedClientData = try AppAttestSigningBrokerTransport.canonicalJSON([
@@ -258,6 +260,25 @@ struct AppAttestSigningBrokerTests {
         ])
         let assertionCall = try #require(await appAttest.assertionCalls.first)
         #expect(assertionCall.clientDataHash == Data(SHA256.hash(data: expectedClientData)))
+    }
+
+    @Test func disabledPushDoesNotRegisterOrSendIdentityData() async throws {
+        let appAttest = StubAppAttestService()
+        let store = MemoryAppAttestKeyStore()
+        let sender = StubBrokerSender([])
+        let transport = try makeTransport(appAttest: appAttest, store: store, sender: sender)
+
+        await #expect(throws: SigningBrokerClientError.remotePushUnavailable) {
+            _ = try await transport.start(
+                idNumber: "A123456789",
+                intent: SigningBrokerIntent(type: .zkHoldingProofV1, tbs: nil, consent: nil),
+                transport: .push, timeLimit: 600)
+        }
+        #expect(await sender.exchanges.isEmpty)
+        #expect(await appAttest.generateKeyCount == 0)
+        #expect(await appAttest.assertionCalls.isEmpty)
+        #expect(await store.record == nil)
+        #expect(!isTransientSignPollFailure(SigningBrokerClientError.remotePushUnavailable))
     }
 
     @Test func pushTransportSucceedsWithoutDeepLink() async throws {
@@ -282,7 +303,8 @@ struct AppAttestSigningBrokerTests {
                 "signed_response": Data("signature".utf8).base64EncodedString()
             ])
         ])
-        let transport = try makeTransport(appAttest: appAttest, store: store, sender: sender)
+        let transport = try makeTransport(appAttest: appAttest, store: store, sender: sender,
+                                          supportsPushSigning: true)
 
         let start = try await transport.start(
             idNumber: "A123456789",
@@ -300,6 +322,19 @@ struct AppAttestSigningBrokerTests {
         let exchanges = await sender.exchanges
         let startBody = try json(exchanges[3].body)
         #expect(startBody["transport"] as? String == "push")
+        let business: [String: Any] = [
+            "id_number": "A123456789", "key_id": brokerKeyID,
+            "intent": ["type": "zk_holding_proof_v1"], "transport": "push"
+        ]
+        let expectedClientData = try AppAttestSigningBrokerTransport.canonicalJSON([
+            "api_version": "v1",
+            "body_sha256": SHA256.hash(data: try AppAttestSigningBrokerTransport.canonicalJSON(business)).hex,
+            "challenge": assertionChallenge, "method": "POST",
+            "path": "/v1/signatures/start",
+            "request_id": "018f6c7e-1234-7123-8123-123456789abc"
+        ])
+        let assertionCall = try #require(await appAttest.assertionCalls.first)
+        #expect(assertionCall.clientDataHash == Data(SHA256.hash(data: expectedClientData)))
     }
 
     @Test func retriesAppleServerUnavailableWithTheSameKeyChallengeAndHash() async throws {
@@ -560,7 +595,7 @@ struct AppAttestSigningBrokerTests {
             "transaction_id": "push-transaction",
             "deep_link": brokerDeepLink(transactionID: "push-transaction"),
             "expires_at": brokerExpiry
-        ])
+        ], supportsPushSigning: true)
 
         await #expect(throws: SigningBrokerClientError.invalidResponse) {
             _ = try await transport.start(
@@ -575,7 +610,7 @@ struct AppAttestSigningBrokerTests {
         let transport = try makeRegisteredStartTransport(response: [
             "session_token": "bst1.1.missing-transaction",
             "expires_at": brokerExpiry
-        ])
+        ], supportsPushSigning: true)
 
         await #expect(throws: SigningBrokerClientError.invalidResponse) {
             _ = try await transport.start(
@@ -657,6 +692,7 @@ struct AppAttestSigningBrokerTests {
         #expect(SigningBrokerSessionAssembly.isConfigured(bundle: allowed.bundle))
         #expect(SigningBrokerSessionAssembly.make(bundle: allowed.bundle, transport: .appToApp) != nil)
         #expect(SigningBrokerSessionAssembly.makeAppAttestUATCheck(bundle: allowed.bundle) != nil)
+        #expect(SigningBrokerEndpointConfiguration.fromBundle(allowed.bundle)?.supportsPushSigning == false)
 
         let deviceDevelopment = try configurationBundle(baseURL: "https://signing-dev.mashbean.net")
         defer { try? FileManager.default.removeItem(at: deviceDevelopment.directory) }
@@ -668,6 +704,18 @@ struct AppAttestSigningBrokerTests {
         #expect(!SigningBrokerSessionAssembly.isConfigured(bundle: arbitrary.bundle))
         #expect(SigningBrokerSessionAssembly.make(bundle: arbitrary.bundle, transport: .appToApp) == nil)
         #expect(SigningBrokerSessionAssembly.makeAppAttestUATCheck(bundle: arbitrary.bundle) == nil)
+    }
+
+    @Test func pushCapabilityRequiresExplicitCodeSignedOptIn() throws {
+        let enabled = try configurationBundle(baseURL: "https://signing-uat.mashbean.net",
+                                               supportsPushSigning: true)
+        defer { try? FileManager.default.removeItem(at: enabled.directory) }
+        #expect(SigningBrokerEndpointConfiguration.fromBundle(enabled.bundle)?.supportsPushSigning == true)
+
+        let arbitrary = try configurationBundle(baseURL: "https://signing.attacker.example",
+                                                 supportsPushSigning: true)
+        defer { try? FileManager.default.removeItem(at: arbitrary.directory) }
+        #expect(SigningBrokerEndpointConfiguration.fromBundle(arbitrary.bundle) == nil)
     }
 
     @Test func debugAppDoesNotSelectTheDistributionEndpoint() {
@@ -706,11 +754,12 @@ struct AppAttestSigningBrokerTests {
 
     private func makeTransport(appAttest: StubAppAttestService,
                                store: MemoryAppAttestKeyStore,
-                               sender: any SigningBrokerRequestSending) throws
+                               sender: any SigningBrokerRequestSending,
+                               supportsPushSigning: Bool = false) throws
         -> AppAttestSigningBrokerTransport {
         let configuration = try SigningBrokerEndpointConfiguration(
             baseURL: URL(string: "https://broker.test")!,
-            keyScope: "test-scope")
+            keyScope: "test-scope", supportsPushSigning: supportsPushSigning)
         return AppAttestSigningBrokerTransport(
             configuration: configuration,
             appAttest: appAttest,
@@ -720,7 +769,8 @@ struct AppAttestSigningBrokerTests {
             makeRequestID: { "018f6c7e-1234-7123-8123-123456789abc" })
     }
 
-    private func makeRegisteredStartTransport(response object: [String: Any]) throws
+    private func makeRegisteredStartTransport(response object: [String: Any],
+                                               supportsPushSigning: Bool = false) throws
         -> AppAttestSigningBrokerTransport {
         let record = AppAttestKeyRecord(keyID: brokerKeyID,
                                         scope: "test-scope",
@@ -734,20 +784,22 @@ struct AppAttestSigningBrokerTests {
             response(object)
         ])
         return try makeTransport(
-            appAttest: StubAppAttestService(), store: store, sender: sender)
+            appAttest: StubAppAttestService(), store: store, sender: sender,
+            supportsPushSigning: supportsPushSigning)
     }
 
-    private func configurationBundle(baseURL: String) throws -> (bundle: Bundle, directory: URL) {
+    private func configurationBundle(baseURL: String, supportsPushSigning: Bool? = nil) throws -> (bundle: Bundle, directory: URL) {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
             .appendingPathExtension("bundle")
         try FileManager.default.createDirectory(at: directory,
                                                 withIntermediateDirectories: true)
-        let info: [String: Any] = [
+        var info: [String: Any] = [
             "CFBundleIdentifier": "tw.bonds.backupTW.tests.signing-broker",
             "CFBundlePackageType": "BNDL",
             "BondsSigningBrokerBaseURL": baseURL
         ]
+        if let supportsPushSigning { info["BondsSigningBrokerSupportsPush"] = supportsPushSigning }
         let data = try PropertyListSerialization.data(
             fromPropertyList: info, format: .xml, options: 0)
         try data.write(to: directory.appendingPathComponent("Info.plist"), options: .atomic)

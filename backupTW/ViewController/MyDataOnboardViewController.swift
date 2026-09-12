@@ -48,7 +48,7 @@ class MyDataOnboardViewController: UICollectionViewController {
                  identifier: "mydata.step.details"),
             Item(image: UIImage(systemName: "2.circle.fill"),
                  title: NSLocalizedString("Approve in 行動自然人憑證", comment: "MyData flow step"),
-                 secondaryText: NSLocalizedString("Confirm the request in 行動自然人憑證 on this iPhone or another bound device.", comment: "MyData flow step"),
+                 secondaryText: NSLocalizedString("Follow the instructions on the MyData page to approve the request.", comment: "MyData flow step"),
                  identifier: "mydata.step.certificate"),
             Item(image: UIImage(systemName: "3.circle.fill"),
                  title: NSLocalizedString("Return to Bonds", comment: "MyData flow step"),

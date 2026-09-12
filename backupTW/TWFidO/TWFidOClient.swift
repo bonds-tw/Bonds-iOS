@@ -324,7 +324,7 @@ func isTransientSignPollFailure(_ error: Error) -> Bool {
             return true
         case .server(_, let retryable):
             return retryable
-        case .configurationMissing, .appAttestUnsupported, .appAttestKeyInvalid,
+        case .configurationMissing, .remotePushUnavailable, .appAttestUnsupported, .appAttestKeyInvalid,
              .invalidTimeLimit:
             return false
         }

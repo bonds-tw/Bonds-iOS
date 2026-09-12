@@ -27,6 +27,17 @@ private enum SampleTestError: LocalizedError {
 @MainActor
 struct ErrorCatcherTests {
 
+    @Test func safeDeletionRecoveryMessageSurvivesReportRedaction() {
+        let message = UserFacingError.deletionMessage(for: CocoaError(.fileWriteOutOfSpace))
+        let report = ErrorDiagnosticReport(
+            shortError: message, errorDomain: NSCocoaErrorDomain,
+            errorCode: CocoaError.fileWriteOutOfSpace.rawValue,
+            errorType: "StoreError", technicalDetails: "/private/var/mobile/private-document")
+        #expect(report.shortError == message)
+        #expect(report.formattedText.contains(message))
+        #expect(!report.formattedText.contains("private-document"))
+    }
+
     @Test func diagnosticReportContainsStandardFields() {
         let report = ErrorDiagnosticReport(
             timestamp: Date(timeIntervalSince1970: 1_800_000_000),

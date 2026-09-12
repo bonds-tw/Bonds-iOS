@@ -1,6 +1,26 @@
 {
   "sourceLanguage": "en",
   "strings": {
+  "Follow the instructions on the MyData page to approve the request.": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "請依 MyData 頁面的指示確認要求。"
+        }
+      }
+    }
+  },
+  "Remote approval is not available in this version. To sign, use Bonds on a device with 行動自然人憑證 installed.": {
+    "localizations": {
+      "zh-Hant": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "此版本尚未開放跨裝置簽章。若要簽章，請在已安裝行動自然人憑證的裝置上使用有備而來。"
+        }
+      }
+    }
+  },
     "An unexpected issue occurred. Please try again.": {
       "localizations": {
         "zh-Hant": {

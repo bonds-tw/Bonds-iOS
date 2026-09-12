@@ -14,6 +14,7 @@ import Security
 
 enum SigningBrokerClientError: Error, Equatable, Sendable {
     case configurationMissing
+    case remotePushUnavailable
     case appAttestUnsupported
     case appAttestUnavailable
     case appAttestKeyInvalid
@@ -25,6 +26,10 @@ enum SigningBrokerClientError: Error, Equatable, Sendable {
 extension SigningBrokerClientError: LocalizedError {
     var errorDescription: String? {
         switch self {
+        case .remotePushUnavailable:
+            return NSLocalizedString(
+                "Remote approval is not available in this version. To sign, use Bonds on a device with 行動自然人憑證 installed.",
+                comment: "remote signing is not enabled")
         case .invalidTimeLimit:
             return NSLocalizedString("The signing request has an invalid time limit.", comment: "signing broker")
         case .server(let code, _):
@@ -44,8 +49,9 @@ extension SigningBrokerClientError: LocalizedError {
 struct SigningBrokerEndpointConfiguration: Equatable, Sendable {
     let baseURL: URL
     let keyScope: String
+    let supportsPushSigning: Bool
 
-    init(baseURL: URL, keyScope: String? = nil) throws {
+    init(baseURL: URL, keyScope: String? = nil, supportsPushSigning: Bool = false) throws {
         guard let components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false),
               components.scheme == "https",
               components.host?.isEmpty == false,
@@ -59,6 +65,7 @@ struct SigningBrokerEndpointConfiguration: Equatable, Sendable {
         }
         self.baseURL = baseURL
         self.keyScope = keyScope ?? baseURL.absoluteString
+        self.supportsPushSigning = supportsPushSigning
     }
 
     /// Runtime configuration remains absent until a reviewed endpoint is
@@ -75,7 +82,11 @@ struct SigningBrokerEndpointConfiguration: Equatable, Sendable {
                 host == "signing-uat.mashbean.net" else {
             return nil
         }
-        return try? Self(baseURL: url)
+        // Enable only in a code-signed build after the selected broker's push
+        // contract and Release device flow have been verified. Existing brokers
+        // reject the additional transport field, even for app-to-app signing.
+        return try? Self(baseURL: url, supportsPushSigning:
+            bundle.object(forInfoDictionaryKey: "BondsSigningBrokerSupportsPush") as? Bool == true)
     }
 }
 
@@ -376,6 +387,11 @@ actor AppAttestSigningBrokerTransport: SigningBrokerTransport {
                intent: SigningBrokerIntent,
                transport: TWFidOTransport,
                timeLimit: Int) async throws -> SigningBrokerStart {
+        guard transport != .push || configuration.supportsPushSigning else {
+            // Refuse before key registration, assertions or sending identity
+            // data; an unavailable push must never turn into a silent app handoff.
+            throw SigningBrokerClientError.remotePushUnavailable
+        }
         guard TWFidOClient.allowedTimeLimits.contains(timeLimit) else {
             throw SigningBrokerClientError.invalidTimeLimit(timeLimit)
         }
@@ -459,12 +475,14 @@ actor AppAttestSigningBrokerTransport: SigningBrokerTransport {
                                  requestID: String) async throws -> SigningBrokerStart {
         try await withKeyRecovery { keyID in
             let intentValue = try Self.intentValue(intent)
-            let business: [String: Any] = [
+            var business: [String: Any] = [
                 "id_number": idNumber,
                 "intent": intentValue,
-                "key_id": keyID,
-                "transport": transport.rawValue
+                "key_id": keyID
             ]
+            // An omitted transport means app-to-app in both broker contracts.
+            // Preserve the old wire body AND assertion hash for that path.
+            if transport == .push { business["transport"] = transport.rawValue }
             let challenge = try await assertionChallenge(keyID: keyID)
             let clientData = try Self.canonicalJSON([
                 "api_version": "v1",

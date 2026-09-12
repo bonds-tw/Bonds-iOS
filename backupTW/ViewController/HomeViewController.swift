@@ -1253,8 +1253,9 @@ extension HomeViewController {
             applySnapshot()
         } catch {
             ErrorCatcher.present(
-                error: error,
                 title: NSLocalizedString("The card was not deleted", comment: "delete failure title"),
+                shortError: UserFacingError.deletionMessage(for: error),
+                underlyingError: error,
                 on: self
             )
         }
@@ -1267,8 +1268,9 @@ extension HomeViewController {
             applySnapshot()
         } catch {
             ErrorCatcher.present(
-                error: error,
                 title: NSLocalizedString("The document was not deleted", comment: ""),
+                shortError: NSLocalizedString("The protected original is still on this phone. Try again in a moment.", comment: ""),
+                underlyingError: error,
                 on: self
             )
         }
