@@ -209,7 +209,9 @@ class MyDataOnboardViewController: UICollectionViewController {
             case .profile:
                 content.text = NSLocalizedString("Remembered details are stored in the iOS Keychain on this iPhone and filled only on mydata.nat.gov.tw.", comment: "MyData profile footer")
             case .data:
-                content.text = NSLocalizedString("All information are stored only on your phone.", comment: "")
+                content.text = self.isNationalID
+                    ? NSLocalizedString("Your downloaded details stay on this iPhone. Signing sends your ID number and a digest of the card to the signing service.", comment: "")
+                    : NSLocalizedString("All information are stored only on your phone.", comment: "")
             default:
                 content.text = nil
             }

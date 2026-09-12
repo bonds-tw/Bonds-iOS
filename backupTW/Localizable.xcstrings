@@ -1,6 +1,7 @@
 {
   "sourceLanguage": "en",
   "strings": {
+  "Your downloaded details stay on this iPhone. Signing sends your ID number and a digest of the card to the signing service.": {"localizations": {"zh-Hant": {"stringUnit": {"state": "translated", "value": "下載的資料保留在這支 iPhone。簽章時，會將身分證字號與卡片內容的摘要傳送至簽章服務。"}}}},
   "Download your details, unlock the PDF if asked, and review them in Bonds before signing.": {"localizations": {"zh-Hant": {"stringUnit": {"state": "translated", "value": "下載資料後，依提示解鎖 PDF，再回 Bonds 檢查內容；這時尚未開始卡片簽章。"}}}},
   "Approve a separate Bonds signature in \u884c\u52d5\u81ea\u7136\u4eba\u6191\u8b49. Return to Bonds and wait for the card-saved confirmation.": {"localizations": {"zh-Hant": {"stringUnit": {"state": "translated", "value": "到「行動自然人憑證」確認另一筆 Bonds 簽章，回來等候「卡片已儲存」的確認。"}}}},
   "Stop waiting": {"localizations": {"zh-Hant": {"stringUnit": {"state": "translated", "value": "停止等候"}}}},
