@@ -349,10 +349,12 @@ class UseViewController: UICollectionViewController {
         }
     }
 
-    /// A unified error popup for the telecom apply flow's failures and empty
+    /// A plain one-button alert for the telecom apply flow's failures and empty
     /// states, in the same shape the collection alert uses.
     private func presentTelecomAlert(title: String, message: String) {
-        ErrorCatcher.present(title: title, shortError: message, on: self)
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: ""), style: .default))
+        present(alert, animated: true)
     }
 
     private func startSevenElevenPickup() {

@@ -310,11 +310,12 @@ final class StoredCredentialViewController: UICollectionViewController {
                     try? AgePredicatePrepareCache().purgeAll()
                     self.navigationController?.popViewController(animated: true)
                 } catch {
-                    ErrorCatcher.present(
-                        error: error,
+                    let failure = UIAlertController(
                         title: NSLocalizedString("The card was not deleted", comment: "delete failure"),
-                        on: self
-                    )
+                        message: error.localizedDescription,
+                        preferredStyle: .alert)
+                    failure.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: ""), style: .default))
+                    self.present(failure, animated: true)
                 }
             })
         alert.addAction(UIAlertAction(

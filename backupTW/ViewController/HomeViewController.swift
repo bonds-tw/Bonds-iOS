@@ -1252,12 +1252,12 @@ extension HomeViewController {
             }
             applySnapshot()
         } catch {
-            ErrorCatcher.present(
+            let alert = UIAlertController(
                 title: NSLocalizedString("The card was not deleted", comment: "delete failure title"),
-                shortError: UserFacingError.deletionMessage(for: error),
-                underlyingError: error,
-                on: self
-            )
+                message: UserFacingError.deletionMessage(for: error),
+                preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: ""), style: .cancel))
+            present(alert, animated: true)
         }
     }
 
@@ -1267,12 +1267,12 @@ extension HomeViewController {
             try archive.delete(id: document.id)
             applySnapshot()
         } catch {
-            ErrorCatcher.present(
+            let alert = UIAlertController(
                 title: NSLocalizedString("The document was not deleted", comment: ""),
-                shortError: NSLocalizedString("The protected original is still on this phone. Try again in a moment.", comment: ""),
-                underlyingError: error,
-                on: self
-            )
+                message: NSLocalizedString("The protected original is still on this phone. Try again in a moment.", comment: ""),
+                preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: ""), style: .cancel))
+            present(alert, animated: true)
         }
     }
 
@@ -1296,11 +1296,11 @@ extension HomeViewController {
 
     private func openVaultDocument(_ document: MyDataVaultArchive.Document) {
         guard let archive = makeVaultArchive() else {
-            ErrorCatcher.present(
+            let alert = UIAlertController(
                 title: NSLocalizedString("Could not open the document", comment: ""),
-                shortError: Self.unreadableStoreMessage,
-                on: self
-            )
+                message: Self.unreadableStoreMessage, preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: ""), style: .cancel))
+            present(alert, animated: true)
             return
         }
         let detail = MyDataVaultDocumentViewController(id: document.id, archive: archive) { [weak self] in

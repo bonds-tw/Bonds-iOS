@@ -85,36 +85,8 @@ struct SigningBrokerIntent: Codable, Equatable, Sendable {
 struct SigningBrokerStart: Equatable, Sendable {
     let sessionToken: String
     let transactionID: String
+    let deepLink: URL
     let expiresAt: Date
-    let delivery: TWFidOSignDelivery
-
-    init(sessionToken: String,
-         transactionID: String,
-         expiresAt: Date,
-         delivery: TWFidOSignDelivery) {
-        self.sessionToken = sessionToken
-        self.transactionID = transactionID
-        self.expiresAt = expiresAt
-        self.delivery = delivery
-    }
-}
-
-/// Explicit capability returned by a signing session. The transport is part
-/// of the value so callers never infer callback behaviour from an optional
-/// deep link (a push transaction must never register or wait for a callback).
-enum TWFidOSignDelivery: Equatable, Sendable {
-    case appToApp(URL)
-    case push
-
-    var isAppToApp: Bool {
-        if case .appToApp = self { return true }
-        return false
-    }
-}
-
-struct TWFidOSignStart: Equatable, Sendable {
-    let handle: TWFidOSignHandle
-    let delivery: TWFidOSignDelivery
 }
 
 /// App Attest registration, assertions, canonical request hashing, idempotency
@@ -124,20 +96,8 @@ struct TWFidOSignStart: Equatable, Sendable {
 protocol SigningBrokerTransport: Sendable {
     func start(idNumber: String,
                intent: SigningBrokerIntent,
-               transport: TWFidOTransport,
                timeLimit: Int) async throws -> SigningBrokerStart
     func poll(sessionToken: String) async throws -> TWFidOSignResult?
-}
-
-extension SigningBrokerTransport {
-    func start(idNumber: String,
-               intent: SigningBrokerIntent,
-               timeLimit: Int) async throws -> SigningBrokerStart {
-        try await start(idNumber: idNumber,
-                        intent: intent,
-                        transport: .appToApp,
-                        timeLimit: timeLimit)
-    }
 }
 
 /// A privacy-safe production-distribution check. It proves that this installed
@@ -163,31 +123,19 @@ struct SigningBrokerAppAttestUATCheck: AppAttestUATChecking, Sendable {
 /// ignored: the backend owns fixed Traditional-Chinese text for each intent.
 struct SigningBrokerSignSession: TWFidOSignSession, Sendable {
     let transport: any SigningBrokerTransport
-    let preferredTransport: TWFidOTransport
-
-    init(transport: any SigningBrokerTransport,
-         preferredTransport: TWFidOTransport = .appToApp) {
-        self.transport = transport
-        self.preferredTransport = preferredTransport
-    }
 
     func begin(idNumber: String,
                hint: String,
                signing: TWFidOSigningTarget,
-               timeLimit: Int) async throws -> TWFidOSignStart {
+               timeLimit: Int) async throws -> (handle: TWFidOSignHandle, deepLink: URL) {
         let intent = try SigningBrokerIntent.make(from: signing)
         let start = try await transport.start(idNumber: idNumber,
                                               intent: intent,
-                                              transport: preferredTransport,
                                               timeLimit: timeLimit)
-        guard (start.delivery == .push) == (preferredTransport == .push) else {
-            throw SigningBrokerClientError.invalidResponse
-        }
-        return TWFidOSignStart(
-            handle: .remote(sessionToken: start.sessionToken,
-                            transactionID: start.transactionID,
-                            expiresAt: start.expiresAt),
-            delivery: start.delivery)
+        return (.remote(sessionToken: start.sessionToken,
+                        transactionID: start.transactionID,
+                        expiresAt: start.expiresAt),
+                start.deepLink)
     }
 
     func poll(handle: TWFidOSignHandle) async throws -> TWFidOSignResult? {
@@ -203,19 +151,12 @@ enum SigningBrokerSessionAssembly {
         SigningBrokerEndpointConfiguration.fromBundle(bundle) != nil
     }
 
-    static func make(bundle: Bundle = .main,
-                     transport: TWFidOTransport) -> SigningBrokerSignSession? {
+    static func make(bundle: Bundle = .main) -> SigningBrokerSignSession? {
         guard let configuration = SigningBrokerEndpointConfiguration.fromBundle(bundle) else {
             return nil
         }
         return SigningBrokerSignSession(
-            transport: AppAttestSigningBrokerTransport(configuration: configuration),
-            preferredTransport: transport)
-    }
-
-    @MainActor
-    static func make(bundle: Bundle = .main) -> SigningBrokerSignSession? {
-        make(bundle: bundle, transport: TWFidOTransportSelection.automatic())
+            transport: AppAttestSigningBrokerTransport(configuration: configuration))
     }
 
     static func makeAppAttestUATCheck(bundle: Bundle = .main) -> (any AppAttestUATChecking)? {

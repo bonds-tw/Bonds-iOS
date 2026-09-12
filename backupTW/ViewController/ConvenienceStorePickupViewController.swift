@@ -265,7 +265,10 @@ final class ConvenienceStorePickupConsentViewController: UIViewController {
     }
 
     private func showError(_ message: String) {
-        ErrorCatcher.present(title: context.scenario.name, shortError: message, on: self)
+        let alert = UIAlertController(title: context.scenario.name,
+                                      message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: ""), style: .default))
+        present(alert, animated: true)
     }
 
     private static func shortIssuerName(_ name: String) -> String {
@@ -442,11 +445,11 @@ final class ConvenienceStorePickupQRCodeViewController: UIViewController {
             do {
                 show(try await client.regenerate(barcodeSession))
             } catch {
-                ErrorCatcher.present(
-                    error: error,
-                    title: barcodeSession.context.scenario.name,
-                    on: self
-                )
+                let alert = UIAlertController(title: barcodeSession.context.scenario.name,
+                                              message: UserFacingError.pickupMessage(for: error),
+                                              preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: ""), style: .default))
+                present(alert, animated: true)
             }
             regenerateButton.configuration?.showsActivityIndicator = false
             regenerateButton.isEnabled = true

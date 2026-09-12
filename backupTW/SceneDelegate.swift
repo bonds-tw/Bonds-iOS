@@ -256,7 +256,6 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     private let unlockSession = WalletUnlockSession()
     private var mainRootViewController: UIViewController?
     private weak var unlockViewController: WalletUnlockViewController?
-    private var unlockWindow: UIWindow?
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         // Use this method to optionally configure and attach the UIWindow `window` to the provided UIWindowScene `scene`.
@@ -317,13 +316,13 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 self.window = window
                 return
             }
-            if let previewMode = ProcessInfo.processInfo.environment["BONDSTW_UI_TEST_FORMAL_DOCUMENT_PREVIEW"] {
+            if ProcessInfo.processInfo.environment["BONDSTW_UI_TEST_FORMAL_DOCUMENT_PREVIEW"] == "1" {
                 let preview = MyDataOnboardViewController()
                 let navigation = UINavigationController(rootViewController: preview)
                 window.rootViewController = navigation
                 window.makeKeyAndVisible()
                 preview.loadViewIfNeeded()
-                preview.seedSuccessfulNationalIDPreviewForUITest(completed: previewMode != "review")
+                preview.seedSuccessfulNationalIDPreviewForUITest()
                 self.window = window
                 return
             }
@@ -441,23 +440,16 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     private func collectCredential(from link: CredentialOfferLink) {
         Task { @MainActor in
             let outcome = await CredentialCollection.run(from: link)
-            if outcome.isSuccess {
-                Bonds.Haptic.delivered()
-                let alert = UIAlertController(
-                    title: NSLocalizedString("Digital wallet card collection", comment: ""),
-                    message: outcome.message,
-                    preferredStyle: .alert)
-                alert.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: ""),
-                                              style: .default))
-                var presenter = window?.rootViewController
-                while let presented = presenter?.presentedViewController { presenter = presented }
-                presenter?.present(alert, animated: true)
-            } else {
-                ErrorCatcher.present(
-                    title: NSLocalizedString("Digital wallet card collection", comment: ""),
-                    shortError: outcome.message
-                )
-            }
+            if outcome.isSuccess { Bonds.Haptic.delivered() }
+            let alert = UIAlertController(
+                title: NSLocalizedString("Digital wallet card collection", comment: ""),
+                message: outcome.message,
+                preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: ""),
+                                          style: .default))
+            var presenter = window?.rootViewController
+            while let presented = presenter?.presentedViewController { presenter = presented }
+            presenter?.present(alert, animated: true)
         }
     }
 
@@ -511,15 +503,6 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 self.window?.rootViewController = root
                 self.unlockViewController = nil
                 self.privacyShield.uncover()
-            } else if let unlockWindow = self.unlockWindow {
-                // By presenting in a dedicated window at .alert + 1 level, the main window
-                // and any presented alert/modal remains completely untouched. Tearing down
-                // this window leaves the active error popup in its exact layout and position.
-                unlockWindow.isHidden = true
-                self.unlockWindow = nil
-                self.unlockViewController = nil
-                self.window?.makeKeyAndVisible()
-                self.privacyShield.uncover()
             } else {
                 unlock?.dismiss(animated: false) { [weak self] in
                     self?.unlockViewController = nil
@@ -532,8 +515,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     private func presentUnlockIfNeeded() {
         guard unlockViewController == nil,
-              let window = self.window,
-              let windowScene = window.windowScene else {
+              let root = window?.rootViewController else {
             // Initial launch already has the unlock controller as its root.
             privacyShield.uncover()
             return
@@ -541,15 +523,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
         let unlock = makeUnlockController(initial: false)
         unlockViewController = unlock
-
-        let unlockWin = UIWindow(windowScene: windowScene)
-        unlockWin.windowLevel = .alert + 1
-        unlockWin.rootViewController = unlock
-        unlockWin.makeKeyAndVisible()
-        self.unlockWindow = unlockWin
-
-        // The opaque unlock screen is now in its own window above every credential screen
-        // and alert, so the snapshot cover can come down without exposing the wallet.
-        self.privacyShield.uncover()
+        var presenter = root
+        while let presented = presenter.presentedViewController { presenter = presented }
+        presenter.present(unlock, animated: false) { [weak self] in
+            // The opaque unlock screen is now above every credential screen, so
+            // the snapshot cover can come down without exposing the wallet.
+            self?.privacyShield.uncover()
+        }
     }
 }
