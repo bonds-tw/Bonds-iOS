@@ -64,42 +64,16 @@ struct ErrorCatcherTests {
         #expect(short.contains("card service") || short.contains("連線") || short.contains("網路"))
     }
 
-    @Test func errorCatcherViewControllerInstantiatesWithExpectedStructure() {
-        let report = ErrorDiagnosticReport(
-            shortError: "儲存卡片失敗",
-            errorDomain: "tw.bonds.store",
-            errorCode: -1,
-            errorType: "StoreFailure",
-            technicalDetails: "disk write error"
-        )
-
-        let vc = ErrorCatcherViewController(title: "測試錯誤", report: report)
-        #expect(vc.modalPresentationStyle == .overFullScreen)
-        #expect(vc.modalTransitionStyle == .crossDissolve)
-
-        // 觸發 viewDidLoad
-        vc.loadViewIfNeeded()
-
-        #expect(vc.view.backgroundColor == .clear)
-        // 驗證 subviews 有加入 backdropView 與 cardContainer
-        #expect(vc.view.subviews.count >= 2)
-    }
-
-    @Test func technicalDetailsScrollTogetherWithTheRecoveryActions() throws {
-        let report = ErrorDiagnosticReport(
-            shortError: "測試錯誤概要", errorDomain: "tw.bonds.test", errorCode: 100,
-            errorType: "ApplicationError", technicalDetails: "safe diagnostic details")
-        let vc = ErrorCatcherViewController(title: "測試錯誤", report: report)
-        vc.loadViewIfNeeded()
-        func descendant(in view: UIView, identifier: String) -> UIView? {
-            if view.accessibilityIdentifier == identifier { return view }
-            return view.subviews.lazy.compactMap { descendant(in: $0, identifier: identifier) }.first
-        }
-        let scroll = try #require(descendant(in: vc.view, identifier: "errorCatcher.reportScroll") as? UIScrollView)
-        let detail = try #require(descendant(in: vc.view, identifier: "errorCatcher.technicalDetails") as? UILabel)
-        #expect(detail.isDescendant(of: scroll))
-        #expect(detail.text == "\(report.errorType) (\(report.errorCode))")
-        #expect(report.formattedText.contains(report.technicalDetails))
+    @Test func nativeAlertPreservesTheRecoveryMessageAndOffersTheReport() {
+        let report = ErrorDiagnosticReport(shortError: "The original is still on this phone.",
+            errorDomain: NSCocoaErrorDomain, errorCode: 513, errorType: "NSError", technicalDetails: "")
+        let alert = ErrorCatcher.makeAlert(title: "Could not delete", report: report, on: UIViewController())
+        #expect(alert.preferredStyle == .alert)
+        #expect(alert.message == report.shortError)
+        #expect(alert.actions.count == 3)
+        #expect(alert.actions[0].title == NSLocalizedString("Copy details", comment: ""))
+        #expect(alert.actions[1].title == NSLocalizedString("Share error report", comment: ""))
+        #expect(alert.preferredAction?.style == .cancel)
     }
 
     @Test func reportTextRespectsCopyGuideRules() {
@@ -187,33 +161,4 @@ struct ErrorCatcherTests {
         #expect(!report.formattedText.contains("/private/fixture"))
     }
 
-    @Test func theDismissButtonRemainsReachableOnAShortScreenWithLargeText() throws {
-        let report = ErrorDiagnosticReport(
-            shortError: String(repeating: "The document is still on this phone. ", count: 6),
-            errorDomain: "tw.bonds.store", errorCode: 1, errorType: "StoreError", technicalDetails: "")
-        let controller = ErrorCatcherViewController(title: "The document was not deleted", report: report)
-        let host = UIViewController()
-        host.addChild(controller)
-        host.view.addSubview(controller.view)
-        controller.didMove(toParent: host)
-        host.setOverrideTraitCollection(UITraitCollection(preferredContentSizeCategory: .accessibilityExtraExtraExtraLarge), forChild: controller)
-        controller.view.frame = CGRect(x: 0, y: 0, width: 320, height: 480)
-        controller.view.layoutIfNeeded()
-        func find(_ id: String, in view: UIView) -> UIView? {
-            if view.accessibilityIdentifier == id { return view }
-            return view.subviews.lazy.compactMap { find(id, in: $0) }.first
-        }
-        let scroll = try #require(find("errorCatcher.reportScroll", in: controller.view) as? UIScrollView)
-        let button = try #require(find("errorCatcher.dismiss", in: controller.view))
-        let details = try #require(find("errorCatcher.technicalDetails", in: controller.view) as? UILabel)
-        #expect(details.font.pointSize <= UIFont.preferredFont(forTextStyle: .body, compatibleWith: controller.traitCollection).pointSize,
-                "Diagnostics must not be magnified twice at accessibility sizes")
-        #expect(details.bounds.height >= details.sizeThatFits(CGSize(width: details.bounds.width, height: .greatestFiniteMagnitude)).height,
-                "The report must grow to show the whole diagnostic message")
-        #expect(scroll.contentSize.height > scroll.bounds.height)
-        let buttonRect = button.convert(button.bounds, to: scroll)
-        #expect(buttonRect.maxY <= scroll.contentSize.height)
-        scroll.scrollRectToVisible(buttonRect, animated: false)
-        #expect(scroll.bounds.contains(buttonRect))
-    }
 }

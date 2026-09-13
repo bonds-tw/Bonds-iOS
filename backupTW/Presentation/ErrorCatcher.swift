@@ -197,12 +197,33 @@ public enum ErrorCatcher {
         on presenter: UIViewController?,
         onDismiss: (() -> Void)?
     ) {
-        let controller = ErrorCatcherViewController(title: title, report: report, onDismiss: onDismiss)
-        controller.modalPresentationStyle = .overFullScreen
-        controller.modalTransitionStyle = .crossDissolve
+        guard let host = resolvePresenter(explicit: presenter) else { return }
+        host.present(makeAlert(title: title, report: report, on: host, onDismiss: onDismiss), animated: true)
+    }
 
-        let host = resolvePresenter(explicit: presenter)
-        host?.present(controller, animated: true)
+    /// Preserve the existing system alert interaction. UIKit handles large text
+    /// and compact screens; the complete sanitized report is an explicit action.
+    static func makeAlert(title: String, report: ErrorDiagnosticReport,
+                          on host: UIViewController, onDismiss: (() -> Void)? = nil) -> UIAlertController {
+        let alert = UIAlertController(title: title, message: report.shortError, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Copy details", comment: "copy error details button"), style: .default) { _ in
+            UIPasteboard.general.string = report.formattedText
+            onDismiss?()
+        })
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Share error report", comment: "user initiated error report sharing"), style: .default) { [weak host, weak alert] _ in
+            guard let host, let alert else { return }
+            let activity = UIActivityViewController(activityItems: [report.formattedText], applicationActivities: nil)
+            activity.popoverPresentationController?.sourceView = host.view
+            activity.popoverPresentationController?.sourceRect = CGRect(x: host.view.bounds.midX, y: host.view.bounds.midY, width: 1, height: 1)
+            alert.dismiss(animated: false) {
+                host.present(activity, animated: true)
+                onDismiss?()
+            }
+        })
+        let done = UIAlertAction(title: NSLocalizedString("OK", comment: ""), style: .cancel) { _ in onDismiss?() }
+        alert.addAction(done)
+        alert.preferredAction = done
+        return alert
     }
 
     static func resolvePresenter(explicit: UIViewController?) -> UIViewController? {

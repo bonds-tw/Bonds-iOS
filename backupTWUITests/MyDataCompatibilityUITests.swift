@@ -29,10 +29,9 @@ final class MyDataCompatibilityUITests: XCTestCase {
         app.launchEnvironment["BONDSTW_UI_TEST_BYPASS_UNLOCK"] = "1"
         app.launchEnvironment["BONDSTW_UI_TEST_ERROR_REPORT_PREVIEW"] = "1"
         app.launch()
-        let dismiss = app.buttons["errorCatcher.dismiss"]
+        let dismiss = app.alerts.buttons.matching(NSPredicate(format: "label IN {'好', 'OK'}")).firstMatch
         XCTAssertTrue(dismiss.waitForExistence(timeout: 10))
-        let scroll = app.scrollViews["errorCatcher.reportScroll"]
-        for _ in 0..<6 where !dismiss.isHittable { scroll.swipeUp() }
+        for _ in 0..<6 where !dismiss.isHittable { app.alerts.firstMatch.swipeUp() }
         XCTAssertTrue(dismiss.isHittable)
         let share = app.buttons.matching(NSPredicate(format: "label CONTAINS '分享錯誤報告' OR label CONTAINS 'Share error report'")).firstMatch
         XCTAssertTrue(share.isHittable)
@@ -40,5 +39,10 @@ final class MyDataCompatibilityUITests: XCTestCase {
         screenshot.name = "Error report with accessibility text size"
         screenshot.lifetime = .keepAlways
         add(screenshot)
+        share.tap()
+        // Sharing remains a deliberate system-sheet action, after the alert
+        // dismisses; no network report is sent by the app itself.
+        XCTAssertTrue(app.otherElements["ActivityListView"].waitForExistence(timeout: 5)
+                      || app.buttons.matching(NSPredicate(format: "label IN {'Copy', '拷貝'}")).firstMatch.exists)
     }
 }

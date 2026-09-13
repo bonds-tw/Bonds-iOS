@@ -314,10 +314,14 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                     shortError: NSLocalizedString("The protected original is still on this phone. Try again in a moment.", comment: ""),
                     errorDomain: NSCocoaErrorDomain, errorCode: 513,
                     errorType: "NSError", technicalDetails: "")
-                window.rootViewController = ErrorCatcherViewController(
-                    title: NSLocalizedString("The document was not deleted", comment: ""), report: report)
+                let host = UIViewController()
+                host.view.backgroundColor = .systemBackground
+                window.rootViewController = host
                 window.makeKeyAndVisible()
                 self.window = window
+                host.present(ErrorCatcher.makeAlert(
+                    title: NSLocalizedString("The document was not deleted", comment: ""),
+                    report: report, on: host), animated: false)
                 return
             }
             if ProcessInfo.processInfo.environment["BONDSTW_UI_TEST_MYDATA_FLOW_PREVIEW"] == "1",
