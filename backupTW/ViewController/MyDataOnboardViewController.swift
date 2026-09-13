@@ -11,15 +11,6 @@ private let reuseIdentifier = "MyDataOnboardCell"
 
 class MyDataOnboardViewController: UICollectionViewController {
 
-    /// The key this device's national ID credential is filed under.
-    ///
-    private var isMobileMoicaReady: Bool {
-        let mobileMoicaURLScheme = "mobilemoica://"
-        let mobileMoicaURL = URL(string: mobileMoicaURLScheme)!
-        let isMobileMoicaReady = UIApplication.shared.canOpenURL(mobileMoicaURL)
-        return isMobileMoicaReady
-    }
-
     private enum Section: Int, CaseIterable {
         case cover, guidance, profile, data
     }
@@ -56,12 +47,12 @@ class MyDataOnboardViewController: UICollectionViewController {
                  secondaryText: NSLocalizedString("Saved details can be filled for you on the official MyData page.", comment: "MyData flow step"),
                  identifier: "mydata.step.details"),
             Item(image: UIImage(systemName: "2.circle.fill"),
-                 title: NSLocalizedString("Approve in 行動自然人憑證", comment: "MyData flow step"),
-                 secondaryText: NSLocalizedString("Bonds opens the certificate app. Confirm there, then return here.", comment: "MyData flow step"),
+                 title: NSLocalizedString("Verify your identity on MyData", comment: "MyData flow step"),
+                 secondaryText: NSLocalizedString("Choose an available verification method on MyData. If another app opens, return to Bonds after confirming.", comment: "MyData flow step"),
                  identifier: "mydata.step.certificate"),
             Item(image: UIImage(systemName: "3.circle.fill"),
                  title: NSLocalizedString("Return to Bonds", comment: "MyData flow step"),
-                 secondaryText: NSLocalizedString("The MyData page stays open and continues after the signature.", comment: "MyData flow step"),
+                 secondaryText: NSLocalizedString("The same MyData page stays open while verification and the download continue.", comment: "MyData flow step"),
                  identifier: "mydata.step.return"),
         ]
         let finalText = documentType.estimatedMinutes.map {
@@ -91,7 +82,7 @@ class MyDataOnboardViewController: UICollectionViewController {
             self.coverItem = CredentialIssuanceAssembly.isAvailable
                 ? Item(image: Self.statusImage("person.text.rectangle", colour: .tintColor),
                        title: NSLocalizedString("Create a Valid Document", comment: ""),
-                       secondaryText: NSLocalizedString("You will use TW FiDO to retrieve your National ID data, and create a valid document.", comment: ""))
+                       secondaryText: NSLocalizedString("Retrieve your data from MyData, then use 行動自然人憑證 to sign and create your card.", comment: ""))
                 : Item(image: Self.statusImage("xmark.shield.fill", colour: .systemOrange),
                        title: NSLocalizedString("This version cannot create a document", comment: ""),
                        secondaryText: NSLocalizedString("Signing needs a service this build cannot reach, so the document could not be created even after fetching your data. Nothing is fetched.", comment: ""))
@@ -302,66 +293,30 @@ class MyDataOnboardViewController: UICollectionViewController {
         // guarded is somebody's national ID number, so it is guarded twice.
         guard canProceed else { return }
 
-        if isMobileMoicaReady {
-            // The web controller resolves the entry URL from the document's item path
-            // (guarded non-nil upstream) and archives the original for vault documents.
-            let vc = MyDataWebViewController(documentType: documentType, completion: { [weak self] result in
-                guard let self else { return }
-                switch result {
-                case .nationalID(let nationalIDModel):
-                    self.showParsedDocument(nationalIDModel)
-                    self.issueCredential(for: nationalIDModel)
-                case .vaultDocument(let entry):
-                    self.finishVaultImport(entry)
-                }
-            })
-            // Pushed, not presented. This flow used to be a sheet on a
-            // fullScreen modal on (from Settings) another modal, with the
-            // password alert as a fourth layer — the deepest stack in the app.
-            // One navigation container, push sequence (design system §10.1):
-            // Back is the escape hatch, and the wizard is still underneath
-            // when the web step completes.
-            if let nav = navigationController {
-                nav.pushViewController(vc, animated: true)
-            } else {
-                present(vc, animated: true)
+        // MyData chooses the available verification methods for this document.
+        // A companion app is needed only if the page actually opens its link.
+        // The web controller resolves the entry URL from the document's item path
+        // (guarded non-nil upstream) and archives the original for vault documents.
+        let vc = MyDataWebViewController(documentType: documentType, completion: { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .nationalID(let nationalIDModel):
+                self.showParsedDocument(nationalIDModel)
+                self.issueCredential(for: nationalIDModel)
+            case .vaultDocument(let entry):
+                self.finishVaultImport(entry)
             }
+        })
+        // Pushed, not presented. This flow used to be a sheet on a
+        // fullScreen modal on (from Settings) another modal, with the
+        // password alert as a fourth layer — the deepest stack in the app.
+        // One navigation container, push sequence (design system §10.1):
+        // Back is the escape hatch, and the wizard is still underneath
+        // when the web step completes.
+        if let nav = navigationController {
+            nav.pushViewController(vc, animated: true)
         } else {
-            // The check is `canOpenURL("mobilemoica://")`, which measures
-            // exactly one thing: whether that app is installed on this phone.
-            // It was reported as 「請先申請行動自然人憑證」 — an assertion about
-            // the person, and a wrong one for the most ordinary case there is,
-            // somebody who already has a 行動自然人憑證 and is holding a new
-            // phone. They were sent off to apply for something they have.
-            //
-            // So the title states the local fact, and the two actions cover the
-            // two real situations: install it, or apply for it.
-            let alert = UIAlertController(
-                title: NSLocalizedString("The TW FidO app is not on this phone", comment: ""),
-                message: NSLocalizedString(
-                    "This app cannot check whether you already have a 行動自然人憑證 — only whether the app that holds it is installed here.",
-                    comment: ""),
-                preferredStyle: .alert)
-            let install = UIAlertAction(
-                title: NSLocalizedString("Get the app", comment: ""),
-                style: .default) { _ in
-                    UIApplication.shared.open(
-                        URL(string: "https://apps.apple.com/tw/app/id1523302632")!)
-                }
-            let confirm = UIAlertAction(
-                title: NSLocalizedString("Go to Application Guide", comment: ""),
-                style: .default) { _ in
-                    let mobileMoicaOnboarding = "https://fido.moi.gov.tw/pt/teaching"
-                    let mobileMoicaOnboardingURL = URL(string: mobileMoicaOnboarding)!
-                    UIApplication.shared.open(mobileMoicaOnboardingURL)
-                }
-            let cancel = UIAlertAction(
-                title: NSLocalizedString("Cancel", comment: ""),
-                style: .cancel)
-            alert.addAction(install)
-            alert.addAction(confirm)
-            alert.addAction(cancel)
-            present(alert, animated: true)
+            present(vc, animated: true)
         }
     }
 

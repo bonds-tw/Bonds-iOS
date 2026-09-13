@@ -670,6 +670,16 @@
         }
       }
     },
+    "An unexpected issue occurred. Please try again.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "發生未預期的問題，請再試一次。"
+          }
+        }
+      }
+    },
     "Answer a checker's code. Neither phone needs a network.": {
       "localizations": {
         "zh-Hant": {
@@ -838,6 +848,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "只有這支 iPhone 解鎖時可用"
+          }
+        }
+      }
+    },
+    "Back to MyData": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Back to MyData"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "回到 MyData"
           }
         }
       }
@@ -1164,6 +1191,16 @@
         }
       }
     },
+    "Caught error": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "捕捉到的錯誤"
+          }
+        }
+      }
+    },
     "Certificate": {
       "localizations": {
         "zh-Hant": {
@@ -1452,6 +1489,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "選擇證明檔案"
+          }
+        }
+      }
+    },
+    "Choose an available verification method on MyData. If another app opens, return to Bonds after confirming.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose an available verification method on MyData. If another app opens, return to Bonds after confirming."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "選擇 MyData 頁面提供的驗證方式。若切換到其他 App，確認後請回到有備而來。"
           }
         }
       }
@@ -1790,6 +1844,16 @@
         }
       }
     },
+    "Copy details": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "複製詳細資料"
+          }
+        }
+      }
+    },
     "Could not load the list of trusted issuers. Check your connection and try again.": {
       "localizations": {
         "zh-Hant": {
@@ -1806,6 +1870,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "無法開啟文件"
+          }
+        }
+      }
+    },
+    "Could not open 行動自然人憑證": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not open 行動自然人憑證"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無法開啟行動自然人憑證"
           }
         }
       }
@@ -3264,6 +3345,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "填寫 MyData 資料"
+          }
+        }
+      }
+    },
+    "Fill in the official MyData page and choose an available verification method.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fill in the official MyData page and choose an available verification method."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 MyData 官方頁面填寫資料，並選擇頁面提供的驗證方式。"
           }
         }
       }
@@ -6839,6 +6937,23 @@
         }
       }
     },
+    "Retrieve your data from MyData, then use 行動自然人憑證 to sign and create your card.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retrieve your data from MyData, then use 行動自然人憑證 to sign and create your card."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "先從 MyData 取得資料，再用行動自然人憑證簽章建立卡片。"
+          }
+        }
+      }
+    },
     "Return": {
       "localizations": {
         "zh-Hant": {
@@ -7430,6 +7545,16 @@
         }
       }
     },
+    "Sensitive diagnostic details are excluded from this report.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此報告不包含敏感診斷詳細資料。"
+          }
+        }
+      }
+    },
     "Service trust verified": {
       "localizations": {
         "zh-Hant": {
@@ -7488,6 +7613,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "設定"
+          }
+        }
+      }
+    },
+    "Share error report": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Share error report"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "分享錯誤報告"
           }
         }
       }
@@ -8575,6 +8717,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Mac 已回傳結果。這支 iPhone 會先核對確切同意內容、MOICA 憑證鏈與 RSA 簽章，通過後才保存。"
+          }
+        }
+      }
+    },
+    "The MyData page is still open. Choose another available verification method there, or install 行動自然人憑證 and try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The MyData page is still open. Choose another available verification method there, or install 行動自然人憑證 and try again."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MyData 頁面仍保留。可以回到頁面選擇其他可用的驗證方式，或安裝行動自然人憑證後再試。"
           }
         }
       }
@@ -9821,6 +9980,16 @@
         }
       }
     },
+    "The request timed out. Please try again in a moment.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "要求逾時，請稍後再試。"
+          }
+        }
+      }
+    },
     "The returned proof does not answer this checker's exact request.": {
       "localizations": {
         "zh-Hant": {
@@ -9838,6 +10007,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "已套用撤銷清單，但沒有與權威來源核對。"
+          }
+        }
+      }
+    },
+    "The same MyData page stays open while verification and the download continue.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The same MyData page stays open while verification and the download continue."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "原本的 MyData 頁面會保留，讓你繼續驗證與下載。"
           }
         }
       }
@@ -12994,6 +13180,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "驗證實體卡簽章"
+          }
+        }
+      }
+    },
+    "Verify your identity on MyData": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verify your identity on MyData"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 MyData 驗證身分"
           }
         }
       }
