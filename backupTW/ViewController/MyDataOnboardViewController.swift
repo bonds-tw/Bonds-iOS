@@ -28,6 +28,12 @@ class MyDataOnboardViewController: UICollectionViewController {
     /// never been applied to this path.
     private var coverItem: Item
     private var items: [Item]
+    typealias IssuanceOperation = @Sendable (NationalIDModel, String) async throws -> Void
+    private let issueAndStore: IssuanceOperation
+    // Retained only for this screen's retry. Nothing new is written to disk.
+    private var pendingNationalID: NationalIDModel?
+    private(set) var isIssuing = false
+    private var issuanceAttempt = 0
 
     /// Which document this run fetches and stores. Defaults to the national ID (the
     /// historical single-document flow). A vault import passes its own type, so the
@@ -76,7 +82,11 @@ class MyDataOnboardViewController: UICollectionViewController {
             identifier: "mydata.profile")
     }
 
-    init(documentType: MyDataDocumentType = MyDataDocumentRegistry.nationalID) {
+    init(documentType: MyDataDocumentType = MyDataDocumentRegistry.nationalID,
+         issueAndStore: @escaping IssuanceOperation = { model, id in
+             try await MyDataOnboardViewController.signAndStore(model, credentialID: id)
+         }) {
+        self.issueAndStore = issueAndStore
         self.documentType = documentType
         if documentType.id == MyDataDocumentRegistry.nationalID.id {
             self.coverItem = CredentialIssuanceAssembly.isAvailable
@@ -259,7 +269,7 @@ class MyDataOnboardViewController: UICollectionViewController {
         var snapshot = NSDiffableDataSourceSnapshot<Section, Item>()
         snapshot.appendSections([.cover])
         snapshot.appendItems([coverItem])
-        if !flowIsFinished {
+        if !flowIsFinished && pendingNationalID == nil {
             snapshot.appendSections([.guidance])
             snapshot.appendItems(guidanceItems)
             snapshot.appendSections([.profile])
@@ -286,6 +296,7 @@ class MyDataOnboardViewController: UICollectionViewController {
     }
 
     @objc private func cancel() {
+        pendingNationalID = nil
         dismiss(animated: true)
     }
 
@@ -304,7 +315,6 @@ class MyDataOnboardViewController: UICollectionViewController {
             guard let self else { return }
             switch result {
             case .nationalID(let nationalIDModel):
-                self.showParsedDocument(nationalIDModel)
                 self.issueCredential(for: nationalIDModel)
             case .vaultDocument(let entry):
                 self.finishVaultImport(entry)
@@ -374,71 +384,74 @@ class MyDataOnboardViewController: UICollectionViewController {
                  secondaryText: nationalIDModel.addressOfHousehold ?? NSLocalizedString("Unknown", comment: "")),
         ]
         applySnapshot()
-        navigationItem.leftBarButtonItem = nil
-        // Deliberately left enabled while signing runs. Disabling it would make a
-        // slow Keychain call into a modal the user cannot leave; letting them
-        // dismiss costs nothing, because issuance does not need this screen to
-        // finish — it only needs it to report.
-        navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .done, target: self, action: #selector(cancel))
+        // Closing remains possible while the detached signing task finishes.
+        // Only a saved credential earns the Done button.
+        navigationItem.leftBarButtonItem = UIBarButtonItem(
+            title: NSLocalizedString("Close", comment: ""), style: .plain,
+            target: self, action: #selector(cancel))
+        let signing = UIBarButtonItem(title: NSLocalizedString("Signing…", comment: "MyData signing status"),
+                                      style: .plain, target: nil, action: nil)
+        signing.isEnabled = false
+        navigationItem.rightBarButtonItem = signing
     }
 
-    /// Turns the parsed document into a credential this device has signed, and
-    /// writes it to disk.
-    ///
-    /// Off the main thread on purpose. Creating the device key is a Keychain
-    /// round trip — a Secure Enclave one on real hardware — and the write goes
-    /// through Data Protection. Neither is slow enough to notice on a good day,
-    /// and both are exactly the kind of call that stalls for a second on a bad
-    /// one, right when a sheet is animating away.
-    private func issueCredential(for nationalIDModel: NationalIDModel) {
-        // Stored under the document type's id — 「national-id」 for the national ID,
-        // 「mydata-…」 for a vault document — which is what routes it to the right
-        // section (CardInventory classifies self-issued docs by id). The id is
-        // stable per document type on purpose: re-running onboarding replaces the
-        // previous credential rather than leaving a stale twin on disk beside it.
+    /// Retry uses the same parsed details but starts a fresh signing attempt.
+    /// Concurrent taps cannot create another request while one is still running.
+    @discardableResult
+    func issueCredential(for nationalIDModel: NationalIDModel) -> Task<Void, Never>? {
+        guard !isIssuing, !flowIsFinished else { return nil }
+        isIssuing = true
+        issuanceAttempt += 1
+        pendingNationalID = nationalIDModel
+        showParsedDocument(nationalIDModel)
         let credentialID = documentType.id
-
-        // Detached rather than a child of any screen's task: issuance is a round
-        // trip out to 行動自然人憑證 and back, and if the user taps Done in the
-        // middle of it the credential should still be saved. Only the reporting
-        // needs the screen, and that is what the weak reference is for.
-        Task.detached(priority: .userInitiated) { [weak self] in
-            // `Result(catching:)` has no `async` overload, so the two arms are
-            // written out rather than smuggled through a synchronous closure.
+        let operation = issueAndStore
+        // Capture the operation and model independently so closing this screen
+        // preserves the existing behavior: a successful signature is still saved.
+        return Task.detached(priority: .userInitiated) { [weak self] in
             let result: Result<Void, Error>
             do {
-                guard let issuance = CredentialIssuanceAssembly.make() else {
-                    // Deliberately *not* `SPCredentialError.requiresBackend.description`.
-                    // That type is `CustomStringConvertible` rather than
-                    // `LocalizedError` on purpose — its own doc says its audience
-                    // is whoever reads the log — and piping it here would put
-                    // 「sp_checksum must be computed by the bonds-tw backend」 in
-                    // front of somebody who was trying to back up their ID card.
-                    throw CredentialIssuanceError.signingUnavailable(
-                        message: NSLocalizedString("This version cannot sign documents yet. Signing has to go through the bonds-tw service, which is not available in this build.",
-                                                   comment: ""))
-                }
-                // A national ID owns its key. The app installation has a separate
-                // WalletIdentity DID, and every TWDIW card already follows the
-                // same per-credential rule through HolderKeyring.
-                let keyring = HolderKeyring.app()
-                let documentKey = try keyring.newKey()
-                do {
-                    let subjectDID = try DIDKey.did(fromP256PublicKeyX963: documentKey.publicKeyX963)
-                    let signed = try await issuance.issue(nationalIDModel,
-                                                          subjectDID: subjectDID,
-                                                          issuerKey: documentKey)
-                    try CredentialStore().save(jws: try signed.serialized(), id: credentialID)
-                } catch {
-                    Self.destroyProvisionalKey(documentKey, in: keyring)
-                    throw error
-                }
+                try await operation(nationalIDModel, credentialID)
                 result = .success(())
             } catch {
                 result = .failure(error)
             }
-
             await MainActor.run { self?.finishIssuance(result) }
+        }
+    }
+
+    @objc func retryIssuance() {
+        guard let pendingNationalID else { return }
+        issueCredential(for: pendingNationalID)
+    }
+
+    // The existing signing, key cleanup and storage operation is unchanged.
+    nonisolated private static func signAndStore(_ nationalIDModel: NationalIDModel, credentialID: String) async throws {
+        guard let issuance = CredentialIssuanceAssembly.make() else {
+            // Deliberately *not* `SPCredentialError.requiresBackend.description`.
+            // That type is `CustomStringConvertible` rather than
+            // `LocalizedError` on purpose — its own doc says its audience
+            // is whoever reads the log — and piping it here would put
+            // 「sp_checksum must be computed by the bonds-tw backend」 in
+            // front of somebody who was trying to back up their ID card.
+            throw CredentialIssuanceError.signingUnavailable(
+                message: NSLocalizedString("This version cannot sign documents yet. Signing has to go through the bonds-tw service, which is not available in this build.",
+                                           comment: ""))
+        }
+        // A national ID owns its key. The app installation has a separate
+        // WalletIdentity DID, and every TWDIW card already follows the
+        // same per-credential rule through HolderKeyring.
+        let keyring = HolderKeyring.app()
+        let documentKey = try keyring.newKey()
+        do {
+            let subjectDID = try DIDKey.did(fromP256PublicKeyX963: documentKey.publicKeyX963)
+            let signed = try await issuance.issue(nationalIDModel,
+                                                  subjectDID: subjectDID,
+                                                  issuerKey: documentKey)
+            try CredentialStore().save(jws: try signed.serialized(), id: credentialID)
+        } catch {
+            Self.destroyProvisionalKey(documentKey, in: keyring)
+            throw error
         }
     }
 
@@ -450,9 +463,14 @@ class MyDataOnboardViewController: UICollectionViewController {
     }
 
     private func finishIssuance(_ result: Result<Void, Error>) {
+        isIssuing = false
         switch result {
         case .success:
+            pendingNationalID = nil
             flowIsFinished = true
+            navigationItem.leftBarButtonItem = nil
+            navigationItem.rightBarButtonItem = UIBarButtonItem(
+                barButtonSystemItem: .done, target: self, action: #selector(cancel))
             coverItem = Item(
                 image: Self.statusImage("checkmark.seal.fill", colour: .systemGreen),
                 title: NSLocalizedString("The valid document has been created", comment: ""),
@@ -469,7 +487,11 @@ class MyDataOnboardViewController: UICollectionViewController {
                 image: Self.statusImage("exclamationmark.triangle.fill", colour: .systemOrange),
                 title: NSLocalizedString("The document could not be signed", comment: ""),
                 secondaryText: error.localizedDescription)
-            presentIssuanceFailure(error)
+            navigationItem.rightBarButtonItem = UIBarButtonItem(
+                title: NSLocalizedString("Retry signing", comment: "MyData signing recovery"),
+                style: .done, target: self, action: #selector(retryIssuance))
+            navigationItem.rightBarButtonItem?.isEnabled = pendingNationalID != nil
+            presentIssuanceFailure(error, attempt: issuanceAttempt)
         }
         applySnapshot()
     }
@@ -498,13 +520,25 @@ class MyDataOnboardViewController: UICollectionViewController {
     /// broken hero card on real devices.
     func seedSuccessfulNationalIDPreviewForUITest() {
         guard isNationalID else { return }
-        showParsedDocument(NationalIDModel(
+        showParsedDocument(Self.previewNationalID)
+        finishIssuance(.success(()))
+    }
+
+    static func makeSigningRecoveryPreviewForUITest() -> MyDataOnboardViewController {
+        let signer = MyDataRecoveryPreviewSigner()
+        let preview = MyDataOnboardViewController(issueAndStore: { _, _ in try await signer.issue() })
+        preview.loadViewIfNeeded()
+        preview.issueCredential(for: previewNationalID)
+        return preview
+    }
+
+    private static var previewNationalID: NationalIDModel {
+        NationalIDModel(
             nationality: "中華民國（臺灣）",
             unifiedNo: "TEST000001",
             name: "版面測試",
             birthdate: "民國 100 年 01 月 01 日",
-            addressOfHousehold: "測試市測試區第一里第二鄰測試路三段四十二巷五號十二樓之十"))
-        finishIssuance(.success(()))
+            addressOfHousehold: "測試市測試區第一里第二鄰測試路三段四十二巷五號十二樓之十")
     }
     #endif
 
@@ -517,11 +551,12 @@ class MyDataOnboardViewController: UICollectionViewController {
     /// so that "the stack never settles" — including the case where the user
     /// dismissed this screen and there is nothing left to present on — decays
     /// into no alert rather than a timer that runs forever.
-    private func presentIssuanceFailure(_ error: Error, attemptsRemaining: Int = 20) {
+    private func presentIssuanceFailure(_ error: Error, attempt: Int, attemptsRemaining: Int = 20) {
+        guard attempt == issuanceAttempt, !isIssuing, !flowIsFinished, pendingNationalID != nil else { return }
         guard presentedViewController == nil, viewIfLoaded?.window != nil else {
             guard attemptsRemaining > 0 else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
-                self?.presentIssuanceFailure(error, attemptsRemaining: attemptsRemaining - 1)
+                self?.presentIssuanceFailure(error, attempt: attempt, attemptsRemaining: attemptsRemaining - 1)
             }
             return
         }
@@ -532,9 +567,21 @@ class MyDataOnboardViewController: UICollectionViewController {
             // module's own sentence. The underlying OSStatus and DID stay out of
             // it — an error string is one of the easier ways for an identifier to
             // end up in a screenshot or a crash report.
-            message: error.localizedDescription,
+            message: error.localizedDescription + "\n\n" + NSLocalizedString(
+                "Your downloaded details remain on this screen. Retry signing without returning to MyData.",
+                comment: "MyData signing recovery"),
             preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: NSLocalizedString("Confirm", comment: ""), style: .default))
         present(alert, animated: true)
     }
 }
+
+#if DEBUG
+private actor MyDataRecoveryPreviewSigner {
+    private var attempts = 0
+    func issue() async throws {
+        attempts += 1
+        if attempts == 1 { throw CredentialIssuanceError.timedOut }
+    }
+}
+#endif

@@ -332,6 +332,27 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 self.window = window
                 return
             }
+            if ProcessInfo.processInfo.environment["BONDSTW_UI_TEST_MYDATA_RECOVERY_PREVIEW"] == "1" {
+                let preview = MyDataOnboardViewController.makeSigningRecoveryPreviewForUITest()
+                window.rootViewController = UINavigationController(rootViewController: preview)
+                window.makeKeyAndVisible()
+                self.window = window
+                return
+            }
+            if ProcessInfo.processInfo.environment["BONDSTW_UI_TEST_MYDATA_PASSWORD_PREVIEW"] == "1" {
+                let preview = MyDataOnboardViewController()
+                let navigation = UINavigationController(rootViewController: preview)
+                let web = MyDataWebViewController(documentType: MyDataDocumentRegistry.nationalID) { _ in
+                    preview.seedSuccessfulNationalIDPreviewForUITest()
+                }
+                window.rootViewController = navigation
+                window.makeKeyAndVisible()
+                preview.loadViewIfNeeded()
+                navigation.pushViewController(web, animated: false)
+                web.showPDFPasswordPreviewForUITest()
+                self.window = window
+                return
+            }
             if ProcessInfo.processInfo.environment["BONDSTW_UI_TEST_FORMAL_DOCUMENT_PREVIEW"] == "1" {
                 let preview = MyDataOnboardViewController()
                 let navigation = UINavigationController(rootViewController: preview)

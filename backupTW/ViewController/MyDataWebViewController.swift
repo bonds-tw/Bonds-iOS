@@ -35,7 +35,7 @@ struct MyDataWebImportSession {
 class MyDataWebViewController : UIViewController {
 
     private enum FlowStage {
-        case details, certificate, returning, waiting, personalDocuments, downloaded
+        case details, certificate, returning, waiting, personalDocuments, downloaded, recovery
     }
     private var flowStage: FlowStage = .details
 
@@ -238,6 +238,9 @@ class MyDataWebViewController : UIViewController {
         case .personalDocuments:
             content = (NSLocalizedString("MyData · Personal documents", comment: "MyData web guide"),
                        NSLocalizedString("Sign in, open Personal documents, then download the completed file here.", comment: "MyData web guide"), true)
+        case .recovery:
+            content = (NSLocalizedString("File not imported", comment: "MyData recovery guide"),
+                       detail ?? "", false)
         case .downloaded:
             content = (NSLocalizedString("Downloaded · sealing in the vault", comment: "MyData web guide"),
                        NSLocalizedString("Bonds is checking the file and keeping the PDF when the archive contains one.", comment: "MyData web guide"), false)
@@ -597,47 +600,36 @@ extension MyDataWebViewController : WKDownloadDelegate {
     }
 
     private func unzipWithPassword(of pdf: PDFDocument, didFail: Bool) {
-        let title = didFail ?
-        NSLocalizedString("Unzipping failed (wrong password). Please enter the correct National ID number.", comment: "")
-        :
-        NSLocalizedString("Please enter the National ID number (unzipping password)", comment: "")
+        present(makePDFPasswordAlert(for: pdf, didFail: didFail), animated: true)
+    }
+
+    /// The PDF stays in memory across wrong-password attempts; the downloaded
+    /// scratch file has already been purged. Cancel releases it and keeps MyData open.
+    func makePDFPasswordAlert(for pdf: PDFDocument, didFail: Bool = false) -> UIAlertController {
         let alert = UIAlertController(
-            title: title,
-            message: NSLocalizedString("For this unzipping only, not to be used for any other purpose.", comment: ""),
+            title: NSLocalizedString("Unlock the downloaded PDF", comment: "MyData PDF password"),
+            message: didFail
+                ? NSLocalizedString("The password did not unlock this PDF. Enter the National ID number again; you do not need to download it again.", comment: "MyData PDF password recovery")
+                : NSLocalizedString("Enter the National ID number used for this MyData document. It is used only to unlock this PDF.", comment: "MyData PDF password"),
             preferredStyle: .alert)
-        // `[weak alert, weak self]`, and both halves matter.
-        //
-        // The closure used to capture `alert` strongly, and `addAction` puts the
-        // closure on the alert — a cycle. Measured: after dismissal
-        // `alertStillAlive = true` and `fieldText = A123456789`. So the
-        // 身分證統一編號 stayed in memory for the life of the process, under a
-        // message that says 「僅供本次解壓縮使用，絕不另作他用」. A wrong password
-        // recurses, so each mistake left another one behind.
-        //
-        // The strong `self` was the second half and cost more: it kept this
-        // controller — and with it a `WKWebView` logged in to
-        // mydata.nat.gov.tw — alive to process exit, so the
-        // `deinit { try? scratch.purge() }` backstop never ran.
-        //
-        // Same shape as `ZKProofViewController.makeIDNumberPrompt`, which had
-        // this fixed already; this path was simply never revisited.
         let confirm = UIAlertAction(
-            title: NSLocalizedString("Continue", comment: ""),
-            style: .default) { [weak alert, weak self] _ in
-                guard let self,
-                      let passwordTextField = alert?.textFields?.first,
-                      let password = passwordTextField.text
-                else {
-                    return
-                }
-                let success = pdf.unlock(withPassword: password)
-                if success {
-                    if let nationalIDModel = self.parseUnencryptedPDF(pdf) {
-                        self.completion(.nationalID(nationalIDModel))
+            title: NSLocalizedString("Continue", comment: ""), style: .default
+        ) { [weak alert, weak self] _ in
+            guard let self, let alert, let field = alert.textFields?.first else { return }
+            let password = field.text ?? ""
+            field.text = nil
+            // UIKit is also dismissing the action alert. Wait for dismissal before
+            // presenting a retry/error or navigating to the signing screen.
+            alert.dismiss(animated: true) { [weak self] in
+                guard let self else { return }
+                // Preserve passwords that already worked exactly as entered;
+                // then tolerate accidental whitespace or a lowercase ID letter.
+                if pdf.unlock(withPassword: password)
+                    || pdf.unlock(withPassword: Self.normalizedPDFPassword(password)) {
+                    if let model = self.parseUnencryptedPDF(pdf) {
+                        self.completion(.nationalID(model))
                         self.closeFlow()
                     } else {
-                        // Unlocked, but not the national-ID layout — an encrypted
-                        // document whose own parser does not exist yet.
                         var detail: String?
                         #if DEBUG
                         detail = "decrypted PDF, parse=nil, pages=\(pdf.pageCount)"
@@ -648,12 +640,56 @@ extension MyDataWebViewController : WKDownloadDelegate {
                     self.unzipWithPassword(of: pdf, didFail: true)
                 }
             }
-        alert.addTextField { textField in
-            textField.placeholder = NSLocalizedString("Input National ID number (unzipping password)", comment: "")
         }
+        confirm.isEnabled = false
+        alert.addTextField { field in
+            field.placeholder = NSLocalizedString("Input National ID number (unzipping password)", comment: "")
+            field.accessibilityIdentifier = "mydata.pdfPassword"
+            field.isSecureTextEntry = true
+            field.keyboardType = .asciiCapable
+            field.autocapitalizationType = .allCharacters
+            field.autocorrectionType = .no
+            field.spellCheckingType = .no
+            field.addAction(UIAction { [weak field, weak confirm] _ in
+                confirm?.isEnabled = !Self.normalizedPDFPassword(field?.text ?? "").isEmpty
+            }, for: .editingChanged)
+        }
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel) { [weak self, weak alert] _ in
+            alert?.textFields?.first?.text = nil
+            self?.updateGuide(.recovery, detail: NSLocalizedString(
+                "The PDF was not imported. Download it again on this MyData page when you are ready.",
+                comment: "MyData password cancellation"))
+        })
         alert.addAction(confirm)
-        self.present(alert, animated: true)
+        alert.preferredAction = confirm
+        return alert
     }
+
+    static func normalizedPDFPassword(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+    }
+
+    #if DEBUG
+    func showPDFPasswordPreviewForUITest() {
+        guard let pdf = Self.makePDFPasswordPreviewForUITest() else { return }
+        unzipWithPassword(of: pdf, didFail: false)
+    }
+
+    static func makePDFPasswordPreviewForUITest() -> PDFDocument? {
+        let format = UIGraphicsPDFRendererFormat()
+        format.documentInfo = [kCGPDFContextUserPassword as String: "TEST000001",
+                               kCGPDFContextOwnerPassword as String: "fixture-owner"]
+        let renderer = UIGraphicsPDFRenderer(bounds: CGRect(x: 0, y: 0, width: 300, height: 300), format: format)
+        let data = renderer.pdfData { context in
+            context.beginPage()
+            ("統號：TEST000001" as NSString).draw(
+                at: CGPoint(x: 20, y: 20), withAttributes: [.font: UIFont.systemFont(ofSize: 12)])
+            ("姓名：版面測試" as NSString).draw(
+                at: CGPoint(x: 20, y: 40), withAttributes: [.font: UIFont.systemFont(ofSize: 12)])
+        }
+        return PDFDocument(data: data)
+    }
+    #endif
 
     private func parseUnencryptedPDF(_ pdf: PDFDocument) -> NationalIDModel? {
         // expected only one page
