@@ -85,33 +85,20 @@ struct ErrorCatcherTests {
         #expect(vc.view.subviews.count >= 2)
     }
 
-    @Test func technicalDetailsAreVisibleInsideABoundedScrollView() {
+    @Test func technicalDetailsScrollTogetherWithTheRecoveryActions() throws {
         let report = ErrorDiagnosticReport(
-            shortError: "測試錯誤概要",
-            errorDomain: "tw.bonds.test",
-            errorCode: 100,
-            errorType: "ApplicationError",
-            technicalDetails: "safe diagnostic details")
+            shortError: "測試錯誤概要", errorDomain: "tw.bonds.test", errorCode: 100,
+            errorType: "ApplicationError", technicalDetails: "safe diagnostic details")
         let vc = ErrorCatcherViewController(title: "測試錯誤", report: report)
         vc.loadViewIfNeeded()
-
         func descendant(in view: UIView, identifier: String) -> UIView? {
             if view.accessibilityIdentifier == identifier { return view }
-            for child in view.subviews {
-                if let match = descendant(in: child, identifier: identifier) { return match }
-            }
-            return nil
+            return view.subviews.lazy.compactMap { descendant(in: $0, identifier: identifier) }.first
         }
-
-        let detailLabel = descendant(in: vc.view, identifier: "errorCatcher.technicalDetails") as? UILabel
-        let scrollView = descendant(in: vc.view, identifier: "errorCatcher.technicalDetailsScroll") as? UIScrollView
-        #expect(detailLabel?.text == "\(report.errorType) (\(report.errorCode))\n\(report.technicalDetails)")
-        #expect(scrollView?.constraints.contains {
-            $0.firstAttribute == .height &&
-            $0.relation == .greaterThanOrEqual &&
-            $0.constant == 44 &&
-            $0.isActive
-        } == true)
+        let scroll = try #require(descendant(in: vc.view, identifier: "errorCatcher.reportScroll") as? UIScrollView)
+        let detail = try #require(descendant(in: vc.view, identifier: "errorCatcher.technicalDetails") as? UILabel)
+        #expect(detail.isDescendant(of: scroll))
+        #expect(detail.text == "\(report.errorType) (\(report.errorCode))\n\(report.technicalDetails)")
     }
 
     @Test func reportTextRespectsCopyGuideRules() {

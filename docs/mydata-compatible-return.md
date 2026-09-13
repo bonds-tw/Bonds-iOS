@@ -31,6 +31,7 @@ MobileMoica 決定能否進入 MyData。
 - 只攔截 `mobilemoica:`，其他登入網頁、JavaScript 對話框及下載政策照舊。
 - Keychain 自動填寫仍限官方 MyData 頁面；原檔儲存、ZIP/PDF 處理、
   個人文件的連續匯入及延後下載狀態不變。
+- 完成畫面改依目前 snapshot 辨識分區，修正移除引導區後地址列被歸錯區的既有問題。
 - `CredentialIssuance`、TW FidO 用戶端、broker、公文簽章與 ZK 簽章程式碼不變。
   卡片仍需原本的行動自然人憑證簽章；以其他方式登入 MyData 不會略過這一步。
 - 回到 App 僅更新「返回」引導，不當作驗證完成或領卡成功。

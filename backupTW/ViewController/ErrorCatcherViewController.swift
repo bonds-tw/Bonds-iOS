@@ -131,8 +131,6 @@ public final class ErrorCatcherViewController: UIViewController {
         sendConfig.baseBackgroundColor = Bonds.Color.accent
         sendConfig.baseForegroundColor = .white
         sendConfig.buttonSize = .large
-        sendConfig.image = UIImage(systemName: "paperplane.fill")
-        sendConfig.imagePadding = Bonds.Space.s
         sendConfig.title = NSLocalizedString("Share error report", comment: "user initiated error report sharing")
         let sendButton = UIButton(configuration: sendConfig)
         sendButton.addTarget(self, action: #selector(sendErrorReport(_:)), for: .touchUpInside)
@@ -208,19 +206,18 @@ public final class ErrorCatcherViewController: UIViewController {
         headerLabel.font = Bonds.Font.caption
         headerLabel.textColor = .secondaryLabel
         headerLabel.adjustsFontForContentSizeCategory = true
+        headerLabel.numberOfLines = 0
 
         var copyConfig = UIButton.Configuration.plain()
-        copyConfig.image = UIImage(systemName: "doc.on.doc")
-        copyConfig.imagePadding = 4
         copyConfig.title = NSLocalizedString("Copy details", comment: "copy error details button")
         copyConfig.buttonSize = .mini
         copyButton.configuration = copyConfig
         copyButton.addTarget(self, action: #selector(copyErrorDetails), for: .touchUpInside)
 
         let topRow = UIStackView(arrangedSubviews: [headerLabel, copyButton])
-        topRow.axis = .horizontal
-        topRow.alignment = .center
-        topRow.distribution = .equalSpacing
+        topRow.axis = .vertical
+        topRow.alignment = .leading
+        topRow.spacing = Bonds.Space.xs
 
         let detailLabel = UILabel()
         detailLabel.text = "\(report.errorType) (\(report.errorCode))\n\(report.technicalDetails)"
@@ -230,28 +227,10 @@ public final class ErrorCatcherViewController: UIViewController {
         detailLabel.adjustsFontForContentSizeCategory = true
         detailLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        let scrollView = UIScrollView()
-        scrollView.accessibilityIdentifier = "errorCatcher.technicalDetailsScroll"
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
-        scrollView.addSubview(detailLabel)
         detailLabel.accessibilityIdentifier = "errorCatcher.technicalDetails"
-
-        let scrollHeight = scrollView.heightAnchor.constraint(lessThanOrEqualToConstant: 100)
-        scrollHeight.priority = .defaultHigh
-        let minimumScrollHeight = scrollView.heightAnchor.constraint(greaterThanOrEqualToConstant: 44)
-        minimumScrollHeight.priority = .required
-
-        NSLayoutConstraint.activate([
-            detailLabel.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor),
-            detailLabel.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
-            detailLabel.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
-            detailLabel.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
-            detailLabel.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor),
-            scrollHeight,
-            minimumScrollHeight,
-        ])
-
-        let innerStack = UIStackView(arrangedSubviews: [topRow, scrollView])
+        // The report already scrolls as a whole. A second 100pt scroller clips
+        // large text to part of a line and makes nested scrolling hard to use.
+        let innerStack = UIStackView(arrangedSubviews: [topRow, detailLabel])
         innerStack.axis = .vertical
         innerStack.spacing = Bonds.Space.s
         innerStack.isLayoutMarginsRelativeArrangement = true

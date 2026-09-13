@@ -153,7 +153,9 @@ class MyDataOnboardViewController: UICollectionViewController {
 
     private func configureDataSource() {
         let cellRegistration = UICollectionView.CellRegistration<UICollectionViewListCell, Item> { cell, indexPath, item in
-            let section = Section(rawValue: indexPath.section)
+            // Finished flows remove guidance/profile sections; visible indexes
+            // are no longer the enum raw values. Use the active snapshot.
+            let section = self.dataSource.snapshot().sectionIdentifiers[indexPath.section]
             let isCover = section == .cover
             // The household address is structurally a long field, even when a
             // particular test value happens to be short.  Keeping it in the
@@ -198,7 +200,7 @@ class MyDataOnboardViewController: UICollectionViewController {
             cell.accessibilityIdentifier = isCover
                 ? "mydataOnboard.cover"
                 : section == .profile ? "mydataOnboard.profile"
-                : "mydataOnboard.\(section?.rawValue ?? -1).\(indexPath.item)"
+                : "mydataOnboard.\(section.rawValue).\(indexPath.item)"
             cell.accessories = section == .profile ? [.disclosureIndicator()] : []
             // Interaction stays ON: `isUserInteractionEnabled = false` made the
             // list cell render its *disabled* appearance, so every step title
@@ -213,7 +215,7 @@ class MyDataOnboardViewController: UICollectionViewController {
         }
         let headerRegistration = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(elementKind: UICollectionView.elementKindSectionHeader) { headerView, elementKind, indexPath in
             var content = headerView.defaultContentConfiguration()
-            switch Section(rawValue: indexPath.section) {
+            switch self.dataSource.snapshot().sectionIdentifiers[indexPath.section] {
             case .guidance:
                 content.text = NSLocalizedString("What happens next", comment: "MyData guidance header")
             case .profile:
@@ -227,7 +229,7 @@ class MyDataOnboardViewController: UICollectionViewController {
         }
         let footerRegistration = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(elementKind: UICollectionView.elementKindSectionFooter) { footerView, elementKind, indexPath in
             var content = footerView.defaultContentConfiguration()
-            switch Section(rawValue: indexPath.section) {
+            switch self.dataSource.snapshot().sectionIdentifiers[indexPath.section] {
             case .profile:
                 content.text = NSLocalizedString("Remembered details are stored in the iOS Keychain on this iPhone and filled only on mydata.nat.gov.tw.", comment: "MyData profile footer")
             case .data:
@@ -271,13 +273,13 @@ class MyDataOnboardViewController: UICollectionViewController {
 
     override func collectionView(_ collectionView: UICollectionView,
                                  shouldSelectItemAt indexPath: IndexPath) -> Bool {
-        Section(rawValue: indexPath.section) == .profile
+        self.dataSource.snapshot().sectionIdentifiers[indexPath.section] == .profile
     }
 
     override func collectionView(_ collectionView: UICollectionView,
                                  didSelectItemAt indexPath: IndexPath) {
         collectionView.deselectItem(at: indexPath, animated: true)
-        guard Section(rawValue: indexPath.section) == .profile else { return }
+        guard self.dataSource.snapshot().sectionIdentifiers[indexPath.section] == .profile else { return }
         navigationController?.pushViewController(
             MyDataProfileViewController { [weak self] in self?.applySnapshot() }, animated: true)
     }
