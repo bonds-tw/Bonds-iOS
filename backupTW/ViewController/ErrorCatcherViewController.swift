@@ -221,7 +221,10 @@ public final class ErrorCatcherViewController: UIViewController {
 
         let detailLabel = UILabel()
         detailLabel.text = "\(report.errorType) (\(report.errorCode))\n\(report.technicalDetails)"
-        detailLabel.font = Bonds.Font.mono(.footnote)
+        // Scale a fixed base once. Scaling an already preferred font magnifies
+        // diagnostic text twice at accessibility sizes.
+        detailLabel.font = UIFontMetrics(forTextStyle: .footnote).scaledFont(
+            for: .monospacedSystemFont(ofSize: 13, weight: .regular))
         detailLabel.textColor = .secondaryLabel
         detailLabel.numberOfLines = 0
         detailLabel.adjustsFontForContentSizeCategory = true

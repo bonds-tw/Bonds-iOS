@@ -200,6 +200,7 @@ class MyDataOnboardViewController: UICollectionViewController {
             cell.accessibilityIdentifier = isCover
                 ? "mydataOnboard.cover"
                 : section == .profile ? "mydataOnboard.profile"
+                : section == .data ? "mydataOnboard.data.\(indexPath.item)"
                 : "mydataOnboard.\(section.rawValue).\(indexPath.item)"
             cell.accessories = section == .profile ? [.disclosureIndicator()] : []
             // Interaction stays ON: `isUserInteractionEnabled = false` made the

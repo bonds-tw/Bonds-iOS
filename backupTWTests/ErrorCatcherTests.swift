@@ -204,6 +204,9 @@ struct ErrorCatcherTests {
         }
         let scroll = try #require(find("errorCatcher.reportScroll", in: controller.view) as? UIScrollView)
         let button = try #require(find("errorCatcher.dismiss", in: controller.view))
+        let details = try #require(find("errorCatcher.technicalDetails", in: controller.view) as? UILabel)
+        #expect(details.font.pointSize <= UIFont.preferredFont(forTextStyle: .body, compatibleWith: controller.traitCollection).pointSize,
+                "Diagnostics must not be magnified twice at accessibility sizes")
         #expect(scroll.contentSize.height > scroll.bounds.height)
         let buttonRect = button.convert(button.bounds, to: scroll)
         #expect(buttonRect.maxY <= scroll.contentSize.height)
