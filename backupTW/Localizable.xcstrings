@@ -2977,6 +2977,16 @@
         }
       }
     },
+    "Enter the National ID number used for this MyData document. It is used only to unlock this PDF.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "請輸入這份 MyData 資料所使用的身分證統一編號，僅用於解鎖這份 PDF。"
+          }
+        }
+      }
+    },
     "Enter the birth date as YYYYMMDD, for example 19880101.": {
       "localizations": {
         "zh-Hant": {
@@ -3305,6 +3315,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "檔案完整性"
+          }
+        }
+      }
+    },
+    "File not imported": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "檔案尚未匯入"
           }
         }
       }
@@ -6944,6 +6964,16 @@
         }
       }
     },
+    "Retry signing": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重試簽章"
+          }
+        }
+      }
+    },
     "Return": {
       "localizations": {
         "zh-Hant": {
@@ -8057,6 +8087,16 @@
         }
       }
     },
+    "Signing…": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "簽章中⋯"
+          }
+        }
+      }
+    },
     "Simulated cards": {
       "localizations": {
         "zh-Hant": {
@@ -8734,6 +8774,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "MyData 頁面會保持開啟，簽署後接續進行。"
+          }
+        }
+      }
+    },
+    "The PDF was not imported. Download it again on this MyData page when you are ready.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "尚未匯入 PDF。準備好後，可在目前的 MyData 頁面重新下載。"
           }
         }
       }
@@ -9716,6 +9766,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "配對碼已經收起來了。這份證明還在處理，在你按下「查下一個人」之前，別人送不進來。"
+          }
+        }
+      }
+    },
+    "The password did not unlock this PDF. Enter the National ID number again; you do not need to download it again.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "密碼無法解鎖這份 PDF。請重新輸入身分證統一編號，不必重新下載。"
           }
         }
       }
@@ -12786,6 +12846,16 @@
         }
       }
     },
+    "Unlock the downloaded PDF": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "解鎖下載的 PDF"
+          }
+        }
+      }
+    },
     "Unlock your credentials in 有備而來": {
       "comment": "Face ID reason",
       "localizations": {
@@ -13926,6 +13996,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "你的證件不會進 iCloud"
+          }
+        }
+      }
+    },
+    "Your downloaded details remain on this screen. Retry signing without returning to MyData.": {
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已下載的資料會保留在這個畫面。請點「重試簽章」，不必返回 MyData 重新下載。"
           }
         }
       }
