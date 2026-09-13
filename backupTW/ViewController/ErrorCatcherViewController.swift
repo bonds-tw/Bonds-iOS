@@ -227,6 +227,8 @@ public final class ErrorCatcherViewController: UIViewController {
             for: .monospacedSystemFont(ofSize: 13, weight: .regular))
         detailLabel.textColor = .secondaryLabel
         detailLabel.numberOfLines = 0
+        detailLabel.lineBreakMode = .byWordWrapping
+        detailLabel.setContentCompressionResistancePriority(.required, for: .vertical)
         detailLabel.adjustsFontForContentSizeCategory = true
         detailLabel.translatesAutoresizingMaskIntoConstraints = false
 
