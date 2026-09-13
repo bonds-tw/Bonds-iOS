@@ -53,7 +53,9 @@ class MyDataWebViewController : UIViewController {
     /// path and never shown when it does not match a known registry title.
     private var archiveDisplayName: String?
     private var archiveKnownType: MyDataDocumentType?
-    private var openedCertificateApp = false
+    private(set) var openedCertificateApp = false
+    typealias CertificateAppOpener = @MainActor (URL, @escaping @MainActor (Bool) -> Void) -> Void
+    private let openCertificateApp: CertificateAppOpener
     private var importSession = MyDataWebImportSession()
     private let guideView = MyDataFlowGuideView()
 
@@ -99,8 +101,15 @@ class MyDataWebViewController : UIViewController {
             ?? "personal/detail/API.idPhotoRev"
     }
 
-    init(documentType: MyDataDocumentType, completion: @escaping ((MyDataImportResult) -> Void)) {
+    init(documentType: MyDataDocumentType,
+         openCertificateApp: @escaping CertificateAppOpener = { url, completion in
+             UIApplication.shared.open(url, options: [:]) { opened in
+                 Task { @MainActor in completion(opened) }
+             }
+         },
+         completion: @escaping ((MyDataImportResult) -> Void)) {
         self.documentType = documentType
+        self.openCertificateApp = openCertificateApp
         self.completion = completion
         super.init(nibName: nil, bundle: nil)
     }
@@ -160,8 +169,8 @@ class MyDataWebViewController : UIViewController {
             self, selector: #selector(appDidBecomeActive),
             name: UIApplication.didBecomeActiveNotification, object: nil)
 
-        progressObservation = webview.observe(\.estimatedProgress, options: [.new]) { webview, change in
-            guard let progress = change.newValue else { return }
+        progressObservation = webview.observe(\.estimatedProgress, options: [.new]) { [weak self] webview, change in
+            guard let self, let progress = change.newValue else { return }
             if progress >= 1.0 {
                 UIView.animate(withDuration: Bonds.Motion.standard, animations: {
                     self.progressView.alpha = 0
@@ -183,10 +192,10 @@ class MyDataWebViewController : UIViewController {
             progressView.heightAnchor.constraint(equalToConstant: 2)
         ])
 
-        reloadWebViewToMobilemoica()
+        loadMyDataEntry()
     }
 
-    private func reloadWebViewToMobilemoica() {
+    private func loadMyDataEntry() {
         let urlString = "https://mydata.nat.gov.tw/\(itemPath)"
         let url = URL(string: urlString)!
         webview.load(URLRequest(url: url))
@@ -213,7 +222,7 @@ class MyDataWebViewController : UIViewController {
         switch stage {
         case .details:
             content = (NSLocalizedString("Step 1 of 4 · MyData details", comment: "MyData web guide"),
-                       detail ?? NSLocalizedString("Fill in the official page. Saved details are filled only here.", comment: "MyData web guide"),
+                       detail ?? NSLocalizedString("Fill in the official MyData page and choose an available verification method.", comment: "MyData web guide"),
                        documentType.entryMode == .personalDocuments)
         case .certificate:
             content = (NSLocalizedString("Step 2 of 4 · Approve the signature", comment: "MyData web guide"),
@@ -235,6 +244,33 @@ class MyDataWebViewController : UIViewController {
         }
         guideView.configure(title: content.0, detail: content.1,
                             showsPersonalDocuments: content.2)
+    }
+
+    /// Intercept only the companion-app scheme. All web-based verification
+    /// choices keep their original navigation, cookies and form state.
+    @discardableResult
+    func handleCertificateLink(_ url: URL) -> Bool {
+        guard url.scheme?.caseInsensitiveCompare("mobilemoica") == .orderedSame else { return false }
+        guard !openedCertificateApp else { return true }
+        openedCertificateApp = true
+        updateGuide(.certificate)
+        openCertificateApp(url) { [weak self] opened in
+            guard let self, !opened else { return }
+            self.openedCertificateApp = false
+            let message = NSLocalizedString("The MyData page is still open. Choose another available verification method there, or install 行動自然人憑證 and try again.", comment: "MyData app handoff recovery")
+            self.updateGuide(.details, detail: message)
+            guard self.viewIfLoaded?.window != nil else { return }
+            let alert = UIAlertController(
+                title: NSLocalizedString("Could not open 行動自然人憑證", comment: "MyData app handoff failure"),
+                message: message, preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: NSLocalizedString("Back to MyData", comment: "MyData app handoff recovery"), style: .cancel))
+            alert.addAction(UIAlertAction(title: NSLocalizedString("Get the app", comment: ""), style: .default) { _ in
+                UIApplication.shared.open(URL(string: "https://apps.apple.com/tw/app/id1523302632")!)
+            })
+            self.presentDialog(alert) {}
+        }
+        // WebKit must never try to load a custom scheme, even if open failed.
+        return true
     }
 
     /// Never autofill a subframe or a lookalike domain. The native Keychain values
@@ -267,18 +303,13 @@ extension MyDataWebViewController : WKNavigationDelegate {
             decisionHandler(.cancel)
             return
         }
-        if let scheme = url.scheme,
-           scheme == "mobilemoica",
-           UIApplication.shared.canOpenURL(url) {
-            openedCertificateApp = true
-            updateGuide(.certificate)
-            UIApplication.shared.open(url)
+        if handleCertificateLink(url) {
             decisionHandler(.cancel)
             return
         }
         if url.absoluteString == "https://mydata.nat.gov.tw/inquiry/docs" {
-            // The webpage may be redirected to homepage of MyData. Reload the webview to Mobilemoica in case the user needs to start over.
-            reloadWebViewToMobilemoica()
+            // Preserve the existing document-entry recovery for this redirect.
+            loadMyDataEntry()
         }
         if navigationAction.shouldPerformDownload {
             decisionHandler(.download)
@@ -559,15 +590,10 @@ extension MyDataWebViewController : WKDownloadDelegate {
     }
 
     private func presentAlert(message: String) {
-        let alert = UIAlertController(
+        ErrorCatcher.present(
             title: NSLocalizedString("Error", comment: ""),
-            message: message,
-            preferredStyle: .alert)
-        let confirm = UIAlertAction(
-            title: NSLocalizedString("OK", comment: ""),
-            style: .default, handler: nil)
-        alert.addAction(confirm)
-        self.present(alert, animated: true)
+            shortError: message,
+            on: self)
     }
 
     private func unzipWithPassword(of pdf: PDFDocument, didFail: Bool) {

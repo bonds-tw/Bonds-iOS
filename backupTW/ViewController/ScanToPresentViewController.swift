@@ -88,12 +88,10 @@ enum ScanToPresent {
     @MainActor
     private static func present(outcome: String, on navigationController: UINavigationController?) {
         navigationController?.popViewController(animated: true)
-        let alert = UIAlertController(title: NSLocalizedString("Present a credential", comment: ""),
-                                      message: outcome, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: ""), style: .default))
-
-        var presenter: UIViewController? = navigationController
-        while let presented = presenter?.presentedViewController { presenter = presented }
-        (presenter ?? navigationController?.topViewController)?.present(alert, animated: true)
+        ErrorCatcher.present(
+            title: NSLocalizedString("Present a credential", comment: ""),
+            shortError: outcome,
+            on: navigationController
+        )
     }
 }

@@ -395,10 +395,11 @@ final class MyDataVaultDocumentViewController: UICollectionViewController {
     }
 
     private func presentError(_ message: String) {
-        let alert = UIAlertController(title: NSLocalizedString("Could not open the document", comment: ""),
-                                      message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: ""), style: .cancel))
-        present(alert, animated: true)
+        ErrorCatcher.present(
+            title: NSLocalizedString("Could not open the document", comment: ""),
+            shortError: message,
+            on: self
+        )
     }
 }
 
