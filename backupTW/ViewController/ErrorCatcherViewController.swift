@@ -220,7 +220,9 @@ public final class ErrorCatcherViewController: UIViewController {
         topRow.spacing = Bonds.Space.xs
 
         let detailLabel = UILabel()
-        detailLabel.text = "\(report.errorType) (\(report.errorCode))\n\(report.technicalDetails)"
+        // Keep the visible diagnosis concise. The full copy/share report also
+        // contains the explanation that sensitive details have been excluded.
+        detailLabel.text = "\(report.errorType) (\(report.errorCode))"
         // Scale a fixed base once. Scaling an already preferred font magnifies
         // diagnostic text twice at accessibility sizes.
         detailLabel.font = UIFontMetrics(forTextStyle: .footnote).scaledFont(

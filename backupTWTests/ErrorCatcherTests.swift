@@ -98,7 +98,8 @@ struct ErrorCatcherTests {
         let scroll = try #require(descendant(in: vc.view, identifier: "errorCatcher.reportScroll") as? UIScrollView)
         let detail = try #require(descendant(in: vc.view, identifier: "errorCatcher.technicalDetails") as? UILabel)
         #expect(detail.isDescendant(of: scroll))
-        #expect(detail.text == "\(report.errorType) (\(report.errorCode))\n\(report.technicalDetails)")
+        #expect(detail.text == "\(report.errorType) (\(report.errorCode))")
+        #expect(report.formattedText.contains(report.technicalDetails))
     }
 
     @Test func reportTextRespectsCopyGuideRules() {
